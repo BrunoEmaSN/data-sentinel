@@ -12,9 +12,11 @@ Ingestor (API)  →  raw_event  →  Validador  →  validated_data  →  Loader
                             validation_unrecoverable  →  DLQ
 ```
 
-- **Contratos**: `contracts/v1/` — esquemas Pydantic versionados (BaseEvent, TransactionSchema).
-- **Steps** (Motia): `src/*_step.py` — Ingestor, Validador, Healing Agent, Loader, DLQ.
-- **State**: El Healing Agent usa reglas de reparación cacheadas (Motia Stream) para no llamar al LLM en errores ya conocidos.
+- **Contratos**: `contracts/v1/` — esquemas Pydantic versionados (BaseEvent, EventEnvelope, TransactionSchema, OrderEvent).
+- **Envelope + Payload**: órdenes usan `EventEnvelope` (sobre con `version`, `source`) + `OrderPayload`; el Validador puede inspeccionar el sobre antes del payload.
+- **Steps** (Motia): `src/*_step.py` — Ingestor, Validador, Healing Agent, Loader, DLQ, process_order_payment.
+- **Cache-Aside (Memoización)**: El Validador consulta primero el State (reglas de reparación). Si hay regla conocida, aplica y re-valida; si no, emite `validation_error` y el Healing Agent llama al LLM. Las soluciones se persisten como `RepairRule` con TTL.
+- **State**: Reglas en Motia Stream (`repair_rules`); ver `src/repair_state.py` (CacheProvider) y `contracts/v1/repair_rule.py` (RepairRule, StoredRepairRule).
 
 ## Requisitos
 
@@ -38,14 +40,19 @@ pip install -e ".[dev]"
 
 ```
 ├── contracts/v1/          # Schema Registry (Pydantic)
-│   ├── event.py           # BaseEvent
-│   └── transaction.py     # TransactionSchema
+│   ├── event.py           # BaseEvent, EventEnvelope (sobre con version)
+│   ├── transaction.py     # TransactionSchema
+│   ├── order.py           # OrderItem, OrderPayload, OrderEvent (Envelope+Payload)
+│   └── repair_rule.py      # RepairRule, StoredRepairRule (reglas con TTL)
 ├── src/                   # Steps Motia (auto-descubiertos)
+│   ├── repair_state.py    # CacheProvider: get/set reglas, apply idempotente, TTL
 │   ├── ingestor_step.py   # POST /ingest → raw_event
-│   ├── validator_step.py  # raw_event → validated_data | validation_error
+│   ├── validator_step.py  # raw_event → validated_data | schema_fixed (cache) | validation_error
 │   ├── healing_agent_step.py  # validation_error → schema_fixed | DLQ
 │   ├── loader_step.py     # validated_data + schema_fixed → DWH
+│   ├── order_payment_step.py  # order_event → OrderEvent validado → order_payment_processed
 │   └── dlq_step.py        # validation_unrecoverable → log
+├── test_sentinel.py       # Simulación ruptura del contrato (CI/CD)
 ├── tests/
 │   ├── unit/              # Modelos Pydantic
 │   ├── integration/      # Flujo vía API (requiere servidor)
@@ -61,6 +68,25 @@ pip install -e ".[dev]"
 1. Instala el runtime III: `curl -fsSL https://install.iii.dev/iii/main/install.sh | sh`
 2. Desde la raíz del proyecto (donde Motia espera `src/`), arranca el servidor según la guía de [Motia](https://motia.dev/docs/getting-started/quick-start) (por ejemplo `npx motia@latest create` en un proyecto Node que referencie este código, o el comando que use tu equipo para Python).
 3. El endpoint de ingest será algo como `POST http://localhost:3111/ingest` (puerto según tu `config.yaml` de III).
+
+### Contrato Envelope + Payload (órdenes)
+
+Para eventos de orden se usa la estructura **Sobre + Cuerpo**:
+
+- **EventEnvelope** (`contracts/v1/event.py`): `event_id`, `timestamp`, `version`, `source`. El Validador puede inspeccionar `version` antes de parsear el payload (p. ej. soportar v1 y v2 en paralelo).
+- **OrderEvent** (`contracts/v1/order.py`): hereda del Envelope y añade `payload: OrderPayload` (order_id, customer_email, items, total_amount, currency). Toda ingestión de órdenes debe validarse con `OrderEvent`; si falla, etiquetar como UNPROCESSED_DLQ.
+
+En un step, validar en la entrada para no procesar datos inválidos:
+
+```python
+from contracts.v1.order import OrderEvent
+
+async def handler(event_data: dict, ctx: FlowContext) -> None:
+    order = OrderEvent.model_validate(event_data)  # falla aquí si el contrato no se cumple
+    # ... usar order.payload.order_id, order.payload.customer_email, etc.
+```
+
+El step `process_order_payment` escucha la cola `order_event` y hace esta validación antes de procesar.
 
 ### Probar el ingest
 
@@ -79,6 +105,20 @@ curl -X POST http://localhost:3111/ingest \
 
 Añade `event_id` y `timestamp` si tu contrato los exige en el body; si no, el Validador puede usar los que inyecte el Ingestor en el sobre.
 
+### Simulación: Ruptura del contrato (Data Sentinel en acción)
+
+Para que el equipo vea la resiliencia del sistema, ejecutad el script que simula un dato malformado:
+
+```bash
+python test_sentinel.py
+```
+
+El script envía un evento con `customer_email` inválido; el **validation_gateway** lo rechaza, se capturan los errores con `e.errors()` (campo y tipo) y se simula el flujo de auto-reparación. Idóneo para ejecutar en CI/CD y verificar que el Sentinel atrapa y etiqueta los fallos correctamente.
+
+- **Aislamiento**: el gateway solo responde "¿Cumple el contrato? Sí/No".
+- **Captura de errores**: los detalles de Pydantic sirven al Agente de IA para reparar o enviar a DLQ.
+- **Encadenamiento**: el flujo no cae; se desvía de forma controlada hacia reparación o DLQ.
+
 ### Tests
 
 ```bash
@@ -93,6 +133,8 @@ export SENTINEL_INGEST_URL=http://localhost:3111/ingest
 pytest -m integration -v
 ```
 
+Los escenarios incluyen **ruptura del contrato OrderEvent** (`test_sentinel_order_event_contract_rupture_invalid_email`); corredlos en CI para validar resiliencia.
+
 ## Escenarios de prueba
 
 | Escenario        | Descripción                    | Comprobación                                              |
@@ -106,10 +148,41 @@ pytest -m integration -v
 - `OPENAI_API_KEY`: necesario para que el Healing Agent invoque el LLM cuando no haya regla en cache.
 - `OPENAI_REMEDIATION_MODEL`: modelo a usar (por defecto `gpt-4o-mini`).
 
+### Prompt maestro (zero hallucination)
+
+El AI Step usa un **system prompt estricto** orientado a esquemas y solo a reparaciones estructurales:
+
+- **Zero Hallucination**: solo reparaciones estructurales (renombrar claves, castear tipos, dividir strings). Nunca inventar ni rellenar valores de negocio.
+- **Contract Adherence**: la salida debe coincidir con el JSON schema objetivo (Pydantic) que se le pasa.
+- **Formato**: la IA devuelve **solo JSON válido**; sin markdown, sin prosa. Así el pipeline puede hacer `json.loads()` directamente.
+- **Irreparable**: si la reparación es ambigua o requiere lógica de negocio (p. ej. calcular un total faltante), la IA devuelve `{"reason": "..."}` y el Sentinel envía el evento a DLQ en lugar de inventar datos.
+
+El prompt recibe: `raw_payload`, `error_details` (de Pydantic) y `target_schema` (de `TransactionSchema.model_json_schema()`), de modo que el modelo sabe exactamente qué estructura debe devolver. Definición completa en `src/healing_agent_step.py` (constante `MASTER_PROMPT`).
+
+### Cache-Aside (Memoización) y ciclo de aprendizaje
+
+**Look-up → Decide → Learn.** Llamar al LLM por cada evento es insostenible; el State convierte reparación (lenta/cara) en lectura en memoria (rápida/barata).
+
+1. **Look-up**: Al fallar la validación, el Validador calcula una firma del error y consulta el State (`repair_rules`). Si existe regla y no está expirada, aplica.
+2. **Decide**: Si hay regla → aplicar (idempotente) y re-validar → emitir `schema_fixed`. Si no → emitir `validation_error` al Healing Agent.
+3. **Learn**: Cuando la IA repara con éxito, el Agente persiste una o más `RepairRule` (source_field, target_field, transformation_type) en State con **TTL**. A partir de entonces, ese mismo error se resuelve en milisegundos sin gastar tokens.
+
+**Buenas prácticas:**
+
+- **TTL (Time To Live)**: Las reglas tienen `expires_at`. Variable de entorno `REPAIR_RULE_TTL_DAYS` (por defecto 7). Tras la expiración, la IA puede re-evaluar (las APIs de terceros pueden haber cambiado de nuevo).
+- **Idempotencia**: Al aplicar una regla, si el campo destino ya existe en el payload no se sobrescribe. No aplicar dos veces la misma transformación al mismo objeto.
+- **Separación de responsabilidades**: El Validador orquesta; delega a `repair_state` (CacheProvider) o al Healing Agent (AIProvider). No mezclar lógica de “reparación conocida” con “descubrimiento vía IA”.
+
 ## Observabilidad
 
 - **Workbench III**: Grafo de eventos y logs de cada step.
 - **Feedback loop**: Revisar periódicamente la DLQ y los logs del Agente para ajustar contratos en `contracts/v1` y reglas de reparación.
+
+## Recomendaciones para ingeniería
+
+- **DLQ (Dead Letter Queue)**: Si la IA falla 3 veces (o N configurado) al reparar un dato, mover ese mensaje a una base o cola de "errores humanos". No borrar datos que fallaron; permiten auditoría y mejora de contratos.
+- **Logging estructurado**: Guardar logs en formato legible por Datadog, ELK o el Workbench de Motia. Poder filtrar por `status: "failed"` para ver qué fuentes son inestables.
+- **Testing de regresión**: Cada cambio en el contrato (p. ej. `OrderEvent`) debe ir acompañado de la ejecución de `test_sentinel.py` y de los escenarios con el JSON anterior, para comprobar retrocompatibilidad o planificar la migración.
 
 ## Despliegue
 

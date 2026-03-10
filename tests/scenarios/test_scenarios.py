@@ -11,6 +11,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
+from contracts.v1.order import OrderEvent
 from contracts.v1.transaction import TransactionSchema
 
 
@@ -94,3 +95,50 @@ def test_scenario_data_corruption_invalid_uuid():
     }
     with pytest.raises(ValidationError):
         TransactionSchema.model_validate(payload)
+
+
+# --- Data Sentinel: Ruptura del contrato OrderEvent ---
+
+
+def test_sentinel_order_event_contract_rupture_invalid_email():
+    """
+    Simulación Data Sentinel: dato malformado (email inválido) es rechazado
+    y el error se captura con detalle para reparación/DLQ.
+    """
+    bad_data = {
+        "event_id": "550e8400-e29b-41d4-a716-446655440000",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "source": "ecommerce_api",
+        "payload": {
+            "order_id": "ORD-123",
+            "customer_email": "esto-no-es-un-email",
+            "items": [{"sku": "PROD-1", "quantity": 1, "price": 10.5}],
+            "total_amount": 10.5,
+            "currency": "USD",
+        },
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        OrderEvent.model_validate(bad_data)
+    errors = exc_info.value.errors()
+    assert any("customer_email" in str(e.get("loc", [])) for e in errors)
+
+
+def test_sentinel_order_event_valid_passes():
+    """Contraste: dato válido pasa el validation_gateway (OrderEvent)."""
+    good_data = {
+        "event_id": str(uuid.uuid4()),
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "source": "ecommerce_api",
+        "payload": {
+            "order_id": "ORD-456",
+            "customer_email": "cliente@ejemplo.com",
+            "items": [{"sku": "PROD-2", "quantity": 2, "price": 25.0}],
+            "total_amount": 50.0,
+            "currency": "EUR",
+        },
+    }
+    event = OrderEvent.model_validate(good_data)
+    assert event.payload.order_id == "ORD-456"
+    assert str(event.payload.customer_email) == "cliente@ejemplo.com"
