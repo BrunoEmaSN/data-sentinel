@@ -33,8 +33,18 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
 # Dependencias
 pip install -e ".[dev]"
-# o: pip install motia pydantic openai pytest pytest-asyncio httpx
+# o: pip install motia pydantic openai pytest pytest-asyncio httpx python-dotenv
 ```
+
+### Variables de entorno (datos sensibles en .env)
+
+Las claves y configuraciones sensibles van en un archivo `.env` en la raíz del proyecto (no se sube al repo).
+
+1. Copia la plantilla: `cp .env.example .env`
+2. Edita `.env` y rellena los valores (p. ej. `OPENAI_API_KEY=sk-...`).
+3. El Healing Agent (y el resto del pipeline) cargan `.env` automáticamente al arrancar (`python-dotenv` + `src/config.py`).
+
+Ver `.env.example` para la lista de variables. El archivo `.env` está en `.gitignore`.
 
 ## Estructura del proyecto
 
@@ -45,9 +55,11 @@ pip install -e ".[dev]"
 │   ├── order.py           # OrderItem, OrderPayload, OrderEvent (Envelope+Payload)
 │   ├── repair_rule.py     # RepairRule, StoredRepairRule (reglas con TTL)
 │   └── schema_factory.py  # Factory por versión (OrderEvent v1/v2, Transaction)
-├── src/                   # Steps Motia (auto-descubiertos)
-│   ├── repair_state.py    # CacheProvider: get/set reglas, apply idempotente, TTL
-│   ├── ingestor_step.py   # POST /ingest → raw_event
+├── .env.example            # Plantilla de variables (copiar a .env, no subir .env)
+├── src/                    # Steps Motia (auto-descubiertos)
+│   ├── config.py           # Carga .env (datos sensibles)
+│   ├── repair_state.py     # CacheProvider: get/set reglas, apply idempotente, TTL
+│   ├── ingestor_step.py    # POST /ingest → raw_event
 │   ├── validator_step.py  # raw_event → validated_data | schema_fixed (cache) | validation_error
 │   ├── healing_agent_step.py  # validation_error → schema_fixed | DLQ
 │   ├── loader_step.py     # validated_data + schema_fixed → DWH
@@ -145,6 +157,8 @@ Los escenarios incluyen **ruptura del contrato OrderEvent** (`test_sentinel_orde
 | **Data corruption** | Dato inválido (ej. string en amount) | validation_error → DLQ si irreparable                   |
 
 ## Configuración del Agente de IA
+
+Pon estas variables en tu `.env` (no en el código):
 
 - `OPENAI_API_KEY`: necesario para que el Healing Agent invoque el LLM cuando no haya regla en cache.
 - `OPENAI_REMEDIATION_MODEL`: modelo a usar (por defecto `gpt-4o-mini`).

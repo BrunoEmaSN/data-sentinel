@@ -9,6 +9,9 @@ import os
 import re
 from typing import Any
 
+# Cargar .env antes de leer os.environ (datos sensibles en .env)
+import config  # noqa: F401
+
 from motia import FlowContext, queue
 from pydantic import ValidationError
 
