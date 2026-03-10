@@ -126,6 +126,12 @@ Luego abre en el navegador:
 
 Ahí puedes ver el grafo de eventos (Flow View), logs de cada step y probar el ingest desde la interfaz. Los cambios en `src/**/*.py` recargan solos gracias al modo watch del `ExecModule`.
 
+**Vista Flow:** Para que el flujo `data-sentinel` aparezca en la pestaña Flow, este proyecto parchea el runtime de Motia (el SDK en Python no envía metadata de flows al motor; ver [iii-hq/iii#1206](https://github.com/iii-hq/iii/issues/1206)). Si la vista Flow está vacía o tras un `uv sync` dejas de ver el flujo, ejecuta:
+
+```bash
+uv run python scripts/patch_motia_flow_metadata.py
+```
+
 ### Contrato Envelope + Payload (órdenes)
 
 Para eventos de orden se usa la estructura **Sobre + Cuerpo**:
