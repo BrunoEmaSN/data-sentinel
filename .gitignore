@@ -35,6 +35,9 @@ htmlcov/
 .env.local
 .env.*.local
 
+# Datos locales del motor III (streams, KV, state, queue)
+data/
+
 # Logs y temporales
 *.log
 *.tmp

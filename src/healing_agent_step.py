@@ -7,7 +7,12 @@ Separación: orquestador delega a repair_state (cache) o a _call_llm_for_fix (AI
 import json
 import os
 import re
+import sys
+from pathlib import Path
 from typing import Any
+
+# Ensure src/ is on sys.path so sibling modules (config, repair_state) are importable
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # Cargar .env antes de leer os.environ (datos sensibles en .env)
 import config  # noqa: F401
