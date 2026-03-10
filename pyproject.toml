@@ -9,7 +9,7 @@ description = "Sentinel de Datos Auto-reparable con Motia (EDA + DDD)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "motia>=1.0",
+    "motia>=1.0.0rc1",
     "pydantic>=2.0",
     "pydantic[email]>=2.0",
     "openai>=1.0",

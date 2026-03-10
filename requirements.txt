@@ -1,5 +1,5 @@
 # Sentinel de Datos - dependencias
-motia>=1.0
+motia>=1.0.0rc1
 pydantic>=2.0
 openai>=1.0
 
