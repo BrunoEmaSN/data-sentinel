@@ -4,13 +4,8 @@ Pipeline orientado a eventos con **Motia** que ingesta datos crudos, valida cont
 
 ## Arquitectura
 
-```
-Ingestor (API)  →  raw_event  →  Validador  →  validated_data  →  Loader
-                                    ↓
-                            validation_error  →  Healing Agent  →  schema_fixed  →  Loader
-                                    ↓                                    ↓
-                            validation_unrecoverable  →  DLQ
-```
+<img width="1692" height="985" alt="image" src="https://github.com/user-attachments/assets/0cd10016-6318-45c5-b522-6d54aee5bbb4" />
+
 
 - **Contratos**: `contracts/v1/` — esquemas Pydantic versionados (BaseEvent, EventEnvelope, TransactionSchema, OrderEvent).
 - **Envelope + Payload**: órdenes usan `EventEnvelope` (sobre con `version`, `source`) + `OrderPayload`; el Validador puede inspeccionar el sobre antes del payload.
