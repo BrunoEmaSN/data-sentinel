@@ -1,8 +1,8 @@
 """
-Modelo base de evento para el pipeline.
+Base event model for the pipeline.
 
-Incluye BaseEvent (legacy) y EventEnvelope: el "sobre" que permite al Validador
-saber qué hacer con el mensaje antes de leer el payload (versionado, source, etc.).
+Includes BaseEvent (legacy) and EventEnvelope: the "envelope" that lets the Validator
+know what to do with the message before reading the payload (versioning, source, etc.).
 """
 import uuid
 from datetime import datetime
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 
 class BaseEvent(BaseModel):
-    """Evento base con metadatos de trazabilidad (compatibilidad con TransactionSchema)."""
+    """Base event with traceability metadata (compatibility with TransactionSchema)."""
 
     event_id: UUID = Field(default_factory=uuid.uuid4)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -21,32 +21,32 @@ class BaseEvent(BaseModel):
     model_config = {"str_strict": True}
 
 
-# --- EL SOBRE (Metadata) ---
-# Todo evento con esta estructura puede rastrearse en el Workbench de Motia.
-# El Validador puede inspeccionar version/source antes de parsear el payload.
+# --- THE ENVELOPE (Metadata) ---
+# Any event with this structure can be traced in the Motia Workbench.
+# The Validator can inspect version/source before parsing the payload.
 
 
 class EventEnvelope(BaseModel):
     """
-    Envelope de evento: metadatos obligatorios para trazabilidad y versionado.
-    Usar como base para contratos que separan header (sobre) y body (payload).
+    Event envelope: required metadata for traceability and versioning.
+    Use as base for contracts that separate header (envelope) and body (payload).
     """
 
     event_id: UUID = Field(
         default_factory=uuid.uuid4,
-        description="Identificador único del evento para correlación y replay.",
+        description="Unique event identifier for correlation and replay.",
     )
     timestamp: datetime = Field(
         default_factory=datetime.utcnow,
-        description="Momento de emisión del evento (UTC).",
+        description="Event emission time (UTC).",
     )
     version: str = Field(
         default="1.0.0",
-        description="Versión del esquema del payload; crucial para evolución sin breaking changes.",
+        description="Payload schema version; crucial for evolution without breaking changes.",
     )
     source: str = Field(
         default="ecommerce_api",
-        description="Sistema o servicio que emitió el evento (ej. ecommerce_api, stripe).",
+        description="System or service that emitted the event (e.g. ecommerce_api, stripe).",
     )
 
     model_config = {"str_strict": True}

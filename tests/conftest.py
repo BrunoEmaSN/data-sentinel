@@ -1,6 +1,6 @@
 """
 Pytest configuration: asyncio mode and integration marker.
-Carga .env desde la raíz del proyecto para tests (p. ej. SENTINEL_INGEST_URL).
+Loads .env from project root for tests (e.g. SENTINEL_INGEST_URL).
 """
 from pathlib import Path
 

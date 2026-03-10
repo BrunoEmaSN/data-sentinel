@@ -1,8 +1,8 @@
 """
-Reglas de reparación (Cache-Aside): "lección aprendida" por el Sentinel.
+Repair rules (Cache-Aside): "lesson learned" by the Sentinel.
 
-Estructura persistida en State con TTL para que las APIs de terceros
-puedan cambiar y la IA re-evalúe tras la expiración.
+Structure persisted in State with TTL so third-party APIs
+can change and the AI re-evaluates after expiry.
 """
 from datetime import datetime
 from typing import Any, Literal
@@ -10,37 +10,37 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-# Tipos de transformación estructural (zero hallucination)
+# Structural transformation types (zero hallucination)
 TransformationType = Literal["rename", "cast_to_float", "cast_to_int", "map_value"]
 
 
 class RepairRule(BaseModel):
     """
-    Una regla de reparación: mapeo origen -> destino y tipo de transformación.
-    Solo transformaciones estructurales; nunca inventar valores de negocio.
+    A repair rule: source -> target mapping and transformation type.
+    Structural transformations only; never invent business values.
     """
 
-    source_field: str = Field(..., description="Nombre del campo en el payload que falla o debe transformarse.")
-    target_field: str = Field(..., description="Nombre del campo esperado por el esquema (o mismo que source si es cast).")
+    source_field: str = Field(..., description="Name of the field in the payload that fails or must be transformed.")
+    target_field: str = Field(..., description="Name of the field expected by the schema (or same as source if cast).")
     transformation_type: TransformationType = Field(
         default="rename",
-        description="Tipo: rename, cast_to_float, cast_to_int, map_value.",
+        description="Type: rename, cast_to_float, cast_to_int, map_value.",
     )
-    # Para map_value: opcional dict de reemplazo (ej. {"yes": true, "no": false})
-    value_map: dict[str, Any] | None = Field(default=None, description="Solo para transformation_type=map_value.")
+    # For map_value: optional replacement dict (e.g. {"yes": true, "no": false})
+    value_map: dict[str, Any] | None = Field(default=None, description="Only for transformation_type=map_value.")
 
     model_config = {"str_strict": True}
 
 
 class StoredRepairRule(BaseModel):
     """
-    Regla guardada en State con TTL. Tras expires_at la regla se considera
-    expirada y el sistema puede volver a consultar a la IA.
+    Rule stored in State with TTL. After expires_at the rule is considered
+    expired and the system may query the AI again.
     """
 
-    rules: list[RepairRule] = Field(default_factory=list, description="Lista de reglas para este tipo de error.")
-    expires_at: datetime = Field(..., description="Fecha de expiración (TTL); tras ella la regla se ignora.")
-    # Compatibilidad: si viene solo field_mapping de versión anterior
-    field_mapping: dict[str, str] | None = Field(default=None, description="Legacy: mapeo source -> target (rename).")
+    rules: list[RepairRule] = Field(default_factory=list, description="List of rules for this error type.")
+    expires_at: datetime = Field(..., description="Expiration date (TTL); after it the rule is ignored.")
+    # Compatibility: if only field_mapping from previous version
+    field_mapping: dict[str, str] | None = Field(default=None, description="Legacy: source -> target mapping (rename).")
 
     model_config = {"str_strict": True}

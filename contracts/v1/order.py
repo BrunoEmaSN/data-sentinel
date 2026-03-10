@@ -1,9 +1,9 @@
 """
-Contrato de Orden (Envelope + Payload).
+Order contract (Envelope + Payload).
 
-Ejemplo de estructura Sobre/Cuerpo: el Validador puede inspeccionar
-event_id, version y source antes de validar el payload.
-Documentación en cada campo para catálogo de datos y OpenAPI.
+Example of Envelope/Body structure: the Validator can inspect
+event_id, version and source before validating the payload.
+Documentation on each field for data catalog and OpenAPI.
 """
 from typing import List
 
@@ -12,47 +12,47 @@ from pydantic import BaseModel, EmailStr, Field
 from contracts.v1.event import EventEnvelope
 
 
-# --- EL CUERPO (Payload) ---
-# Definido por Data Engineering y Negocio; validación de negocio integrada.
+# --- THE BODY (Payload) ---
+# Defined by Data Engineering and Business; integrated business validation.
 
 
 class OrderItem(BaseModel):
-    """Línea de detalle de una orden."""
+    """Order line item."""
 
-    sku: str = Field(..., description="Código único del producto (SKU).")
-    quantity: int = Field(..., gt=0, description="Cantidad; debe ser al menos 1.")
-    price: float = Field(..., ge=0, description="Precio unitario; no negativo.")
+    sku: str = Field(..., description="Unique product code (SKU).")
+    quantity: int = Field(..., gt=0, description="Quantity; must be at least 1.")
+    price: float = Field(..., ge=0, description="Unit price; non-negative.")
 
     model_config = {"str_strict": True}
 
 
 class OrderPayload(BaseModel):
-    """Payload de negocio de una orden: datos que importan para procesamiento y analytics."""
+    """Order business payload: data that matters for processing and analytics."""
 
-    order_id: str = Field(..., description="Identificador de negocio de la orden.")
-    customer_email: EmailStr = Field(..., description="Email del cliente para notificaciones y factura.")
-    items: List[OrderItem] = Field(..., description="Lista de ítems de la orden.")
-    total_amount: float = Field(..., ge=0, description="Total de la orden; debe ser >= 0.")
+    order_id: str = Field(..., description="Business identifier of the order.")
+    customer_email: EmailStr = Field(..., description="Customer email for notifications and invoice.")
+    items: List[OrderItem] = Field(..., description="List of order items.")
+    total_amount: float = Field(..., ge=0, description="Order total; must be >= 0.")
     currency: str = Field(
         ...,
         min_length=3,
         max_length=3,
-        description="Código ISO 4217 de moneda (ej. USD, EUR).",
+        description="ISO 4217 currency code (e.g. USD, EUR).",
     )
 
     model_config = {"str_strict": True}
 
 
-# --- EL CONTRATO FINAL (Envelope + Payload) ---
+# --- FINAL CONTRACT (Envelope + Payload) ---
 
 
 class OrderEvent(EventEnvelope):
     """
-    Evento de orden completo: sobre (metadata) + payload (datos de negocio).
-    Toda ingestión de órdenes debe validarse contra este contrato;
-    si falla, el sistema debe etiquetar como UNPROCESSED_DLQ en el Workbench.
+    Full order event: envelope (metadata) + payload (business data).
+    All order ingestion must validate against this contract;
+    on failure, the system must tag as UNPROCESSED_DLQ in the Workbench.
     """
 
-    payload: OrderPayload = Field(..., description="Cuerpo de la orden validado por el esquema de negocio.")
+    payload: OrderPayload = Field(..., description="Order body validated by the business schema.")
 
     model_config = {"str_strict": True}

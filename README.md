@@ -11,156 +11,156 @@
     <img src="https://img.shields.io/badge/-Openai-black?style=for-the-badge&color=0ea47e" alt="open-ai" />
   </div>
 
-  <h3 align="center">A DATA SENTINEL</h3>
+  <h3 align="center">DATA SENTINEL</h3>
 </div>
 
-Pipeline orientado a eventos con **Motia** que ingesta datos crudos, valida contra contratos **Pydantic**, repara automáticamente con un agente de IA (y cache de reglas) y carga en destino. Los eventos irreparables van a una **Dead Letter Queue** para inspección humana.
+Event-driven pipeline with **Motia** that ingests raw data, validates against **Pydantic** contracts, auto-repairs with an AI agent (and rule cache), and loads to destination. Unrecoverable events go to a **Dead Letter Queue** for human inspection.
 
-## Arquitectura
+## Architecture
 
 <img width="1692" height="985" alt="image" src="https://github.com/user-attachments/assets/0cd10016-6318-45c5-b522-6d54aee5bbb4" />
 
 
-- **Contratos**: `contracts/v1/` — esquemas Pydantic versionados (BaseEvent, EventEnvelope, TransactionSchema, OrderEvent).
-- **Envelope + Payload**: órdenes usan `EventEnvelope` (sobre con `version`, `source`) + `OrderPayload`; el Validador puede inspeccionar el sobre antes del payload.
-- **Steps** (Motia): `src/*_step.py` — Ingestor, Validador, Healing Agent, Loader, DLQ, process_order_payment.
-- **Cache-Aside (Memoización)**: El Validador consulta primero el State (reglas de reparación). Si hay regla conocida, aplica y re-valida; si no, emite `validation_error` y el Healing Agent llama al LLM. Las soluciones se persisten como `RepairRule` con TTL.
-- **State**: Reglas en Motia Stream (`repair_rules`); ver `src/repair_state.py` (CacheProvider) y `contracts/v1/repair_rule.py` (RepairRule, StoredRepairRule).
+- **Contracts**: `contracts/v1/` — versioned Pydantic schemas (BaseEvent, EventEnvelope, TransactionSchema, OrderEvent).
+- **Envelope + Payload**: orders use `EventEnvelope` (envelope with `version`, `source`) + `OrderPayload`; the Validator can inspect the envelope before the payload.
+- **Steps** (Motia): `src/*_step.py` — Ingestor, Validator, Healing Agent, Loader, DLQ, process_order_payment.
+- **Cache-Aside (Memoization)**: The Validator first queries State (repair rules). If a known rule exists, it applies and re-validates; otherwise it emits `validation_error` and the Healing Agent calls the LLM. Solutions are persisted as `RepairRule` with TTL.
+- **State**: Rules in Motia Stream (`repair_rules`); see `src/repair_state.py` (CacheProvider) and `contracts/v1/repair_rule.py` (RepairRule, StoredRepairRule).
 
-## Requisitos
+## Requirements
 
 - Python 3.10+
-- [III Engine](https://iii.dev/) (runtime de Motia)
-- Opcional: [uv](https://docs.astral.sh/uv/) para ejecutar los steps (recomendado; el proyecto usa `uv run` en `iii-config.yaml`)
-- Opcional: `OPENAI_API_KEY` para que el Agente de reparación use el LLM (si no hay regla en cache).
+- [III Engine](https://iii.dev/) (Motia runtime)
+- Optional: [uv](https://docs.astral.sh/uv/) to run the steps (recommended; the project uses `uv run` in `iii-config.yaml`)
+- Optional: `OPENAI_API_KEY` for the Repair Agent to use the LLM (when no rule is in cache).
 
-## Instalación
+## Installation
 
-### 1. Instalar el runtime III (Motor de Motia)
+### 1. Install the III runtime (Motia engine)
 
-El III Engine es el runtime que ejecuta Motia. Instálalo en tu sistema:
+The III Engine is the runtime that executes Motia. Install it on your system:
 
 ```bash
 curl -fsSL https://install.iii.dev/iii/main/install.sh | sh
 ```
 
-Comprueba la instalación:
+Verify the installation:
 
 ```bash
 iii -v
 ```
 
-### 2. Dependencias del proyecto (Python)
+### 2. Project dependencies (Python)
 
-Clona el repo (si aplica) y, desde la raíz del proyecto:
+Clone the repo (if applicable) and from the project root:
 
-**Con uv (recomendado):**
+**With uv (recommended):**
 
 ```bash
 uv sync
-# Con dependencias de desarrollo: uv sync --extra dev
+# With dev dependencies: uv sync --extra dev
 ```
 
-**Con pip y venv:**
+**With pip and venv:**
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-# o: pip install motia pydantic openai pytest pytest-asyncio httpx python-dotenv
+# or: pip install motia pydantic openai pytest pytest-asyncio httpx python-dotenv
 ```
 
-### 3. Variables de entorno (datos sensibles en .env)
+### 3. Environment variables (sensitive data in .env)
 
-Las claves y configuraciones sensibles van en un archivo `.env` en la raíz del proyecto (no se sube al repo).
+Sensitive keys and configuration go in a `.env` file at the project root (not committed to the repo).
 
-1. Copia la plantilla: `cp .env.example .env`
-2. Edita `.env` y rellena los valores (p. ej. `OPENAI_API_KEY=sk-...`).
-3. El Healing Agent (y el resto del pipeline) cargan `.env` automáticamente al arrancar (`python-dotenv` + `src/config.py`).
+1. Copy the template: `cp .env.example .env`
+2. Edit `.env` and fill in the values (e.g. `OPENAI_API_KEY=sk-...`).
+3. The Healing Agent (and the rest of the pipeline) load `.env` automatically on startup (`python-dotenv` + `src/config.py`).
 
-Ver `.env.example` para la lista de variables. El archivo `.env` está en `.gitignore`.
+See `.env.example` for the list of variables. The `.env` file is in `.gitignore`.
 
-## Estructura del proyecto
+## Project structure
 
 ```
 ├── contracts/v1/          # Schema Registry (Pydantic)
-│   ├── event.py           # BaseEvent, EventEnvelope (sobre con version)
+│   ├── event.py           # BaseEvent, EventEnvelope (envelope with version)
 │   ├── transaction.py     # TransactionSchema
 │   ├── order.py           # OrderItem, OrderPayload, OrderEvent (Envelope+Payload)
-│   ├── repair_rule.py     # RepairRule, StoredRepairRule (reglas con TTL)
-│   └── schema_factory.py  # Factory por versión (OrderEvent v1/v2, Transaction)
-├── .env.example            # Plantilla de variables (copiar a .env, no subir .env)
-├── src/                    # Steps Motia (auto-descubiertos)
-│   ├── config.py           # Carga .env (datos sensibles)
-│   ├── repair_state.py     # CacheProvider: get/set reglas, apply idempotente, TTL
+│   ├── repair_rule.py     # RepairRule, StoredRepairRule (rules with TTL)
+│   └── schema_factory.py  # Factory by version (OrderEvent v1/v2, Transaction)
+├── .env.example            # Variable template (copy to .env; do not commit .env)
+├── src/                    # Motia steps (auto-discovered)
+│   ├── config.py           # Loads .env (sensitive data)
+│   ├── repair_state.py     # CacheProvider: get/set rules, idempotent apply, TTL
 │   ├── ingestor_step.py    # POST /ingest → raw_event
 │   ├── validator_step.py  # raw_event → validated_data | schema_fixed (cache) | validation_error
 │   ├── healing_agent_step.py  # validation_error → schema_fixed | DLQ
 │   ├── loader_step.py     # validated_data + schema_fixed → DWH
-│   ├── order_payment_step.py  # order_event → OrderEvent validado → order_payment_processed
+│   ├── order_payment_step.py  # order_event → validated OrderEvent → order_payment_processed
 │   └── dlq_step.py        # validation_unrecoverable → log
-├── test_sentinel.py       # Simulación ruptura del contrato (CI/CD)
+├── test_sentinel.py       # Contract breach simulation (CI/CD)
 ├── tests/
-│   ├── unit/              # Modelos Pydantic
-│   ├── integration/      # Flujo vía API (requiere servidor)
+│   ├── unit/              # Pydantic models
+│   ├── integration/      # Flow via API (requires server)
 │   └── scenarios/         # Happy path, schema drift, data corruption
 ├── pyproject.toml
 └── README.md
 ```
 
-## Uso
+## Usage
 
-### Levantar el backend (Motia/III)
+### Start the backend (Motia/III)
 
-Desde la raíz del proyecto, arranca el motor III con la configuración del repo. Esto levanta la API, colas, state y el proceso que ejecuta los steps de Motia (`src/*_step.py`):
+From the project root, start the III engine with the repo config. This brings up the API, queues, state, and the process that runs the Motia steps (`src/*_step.py`):
 
 ```bash
 iii -c iii-config.yaml
 ```
 
-- El endpoint de ingest queda en **`POST http://localhost:3111/ingest`** (puerto definido en `iii-config.yaml`).
-- Los steps se descubren automáticamente desde `src/`; el módulo `ExecModule` ejecuta `uv run motia run --dir src`. Si no usas uv, edita `iii-config.yaml` y cambia a `python -m motia run --dir src`.
+- The ingest endpoint is at **`POST http://localhost:3111/ingest`** (port defined in `iii-config.yaml`).
+- Steps are auto-discovered from `src/`; the `ExecModule` runs `uv run motia run --dir src`. If you don't use uv, edit `iii-config.yaml` and change to `python -m motia run --dir src`.
 
-### Levantar el Workbench de Motia
+### Start the Motia Workbench
 
-El [Workbench](https://www.motia.dev/docs/concepts/workbench) es la consola visual para ver flujos, logs y probar endpoints. Con el backend ya en marcha (`iii -c iii-config.yaml`), en **otra terminal** ejecuta:
+The [Workbench](https://www.motia.dev/docs/concepts/workbench) is the visual console to view flows, logs, and test endpoints. With the backend already running (`iii -c iii-config.yaml`), in **another terminal** run:
 
 ```bash
 iii-console --enable-flow
 ```
 
-Luego abre en el navegador:
+Then open in your browser:
 
 - **Workbench:** [http://localhost:3113/](http://localhost:3113/)
 
-Ahí puedes ver el grafo de eventos (Flow View), logs de cada step y probar el ingest desde la interfaz. Los cambios en `src/**/*.py` recargan solos gracias al modo watch del `ExecModule`.
+There you can see the event graph (Flow View), logs for each step, and test ingest from the UI. Changes in `src/**/*.py` reload automatically thanks to the `ExecModule` watch mode.
 
-**Vista Flow:** Para que el flujo `data-sentinel` aparezca en la pestaña Flow, este proyecto parchea el runtime de Motia (el SDK en Python no envía metadata de flows al motor; ver [iii-hq/iii#1206](https://github.com/iii-hq/iii/issues/1206)). Si la vista Flow está vacía o tras un `uv sync` dejas de ver el flujo, ejecuta:
+**Flow View:** For the `data-sentinel` flow to appear in the Flow tab, this project patches the Motia runtime (the Python SDK does not send flow metadata to the engine; see [iii-hq/iii#1206](https://github.com/iii-hq/iii/issues/1206)). If the Flow view is empty or after a `uv sync` you no longer see the flow, run:
 
 ```bash
 uv run python scripts/patch_motia_flow_metadata.py
 ```
 
-### Contrato Envelope + Payload (órdenes)
+### Envelope + Payload contract (orders)
 
-Para eventos de orden se usa la estructura **Sobre + Cuerpo**:
+For order events the **Envelope + Body** structure is used:
 
-- **EventEnvelope** (`contracts/v1/event.py`): `event_id`, `timestamp`, `version`, `source`. El Validador puede inspeccionar `version` antes de parsear el payload (p. ej. soportar v1 y v2 en paralelo).
-- **OrderEvent** (`contracts/v1/order.py`): hereda del Envelope y añade `payload: OrderPayload` (order_id, customer_email, items, total_amount, currency). Toda ingestión de órdenes debe validarse con `OrderEvent`; si falla, etiquetar como UNPROCESSED_DLQ.
+- **EventEnvelope** (`contracts/v1/event.py`): `event_id`, `timestamp`, `version`, `source`. The Validator can inspect `version` before parsing the payload (e.g. support v1 and v2 in parallel).
+- **OrderEvent** (`contracts/v1/order.py`): extends the Envelope and adds `payload: OrderPayload` (order_id, customer_email, items, total_amount, currency). All order ingestion must validate with `OrderEvent`; on failure, tag as UNPROCESSED_DLQ.
 
-En un step, validar en la entrada para no procesar datos inválidos:
+In a step, validate at the input to avoid processing invalid data:
 
 ```python
 from contracts.v1.order import OrderEvent
 
 async def handler(event_data: dict, ctx: FlowContext) -> None:
-    order = OrderEvent.model_validate(event_data)  # falla aquí si el contrato no se cumple
-    # ... usar order.payload.order_id, order.payload.customer_email, etc.
+    order = OrderEvent.model_validate(event_data)  # fails here if the contract is not met
+    # ... use order.payload.order_id, order.payload.customer_email, etc.
 ```
 
-El step `process_order_payment` escucha la cola `order_event` y hace esta validación antes de procesar.
+The `process_order_payment` step listens to the `order_event` queue and performs this validation before processing.
 
-### Probar el ingest
+### Test ingest
 
 ```bash
 curl -X POST http://localhost:3111/ingest \
@@ -175,101 +175,101 @@ curl -X POST http://localhost:3111/ingest \
   }'
 ```
 
-Añade `event_id` y `timestamp` si tu contrato los exige en el body; si no, el Validador puede usar los que inyecte el Ingestor en el sobre.
+Add `event_id` and `timestamp` if your contract requires them in the body; otherwise the Validator can use those injected by the Ingestor in the envelope.
 
-### Simulación: Ruptura del contrato (Data Sentinel en acción)
+### Simulation: Contract breach (Data Sentinel in action)
 
-Para que el equipo vea la resiliencia del sistema, ejecutad el script que simula un dato malformado:
+To show the team the system's resilience, run the script that simulates malformed data:
 
 ```bash
 python test_sentinel.py
 ```
 
-El script envía un evento con `customer_email` inválido; el **validation_gateway** lo rechaza, se capturan los errores con `e.errors()` (campo y tipo) y se simula el flujo de auto-reparación. Idóneo para ejecutar en CI/CD y verificar que el Sentinel atrapa y etiqueta los fallos correctamente.
+The script sends an event with invalid `customer_email`; the **validation_gateway** rejects it, errors are captured with `e.errors()` (field and type), and the auto-repair flow is simulated. Ideal for CI/CD to verify that the Sentinel catches and labels failures correctly.
 
-- **Aislamiento**: el gateway solo responde "¿Cumple el contrato? Sí/No".
-- **Captura de errores**: los detalles de Pydantic sirven al Agente de IA para reparar o enviar a DLQ.
-- **Encadenamiento**: el flujo no cae; se desvía de forma controlada hacia reparación o DLQ.
+- **Isolation**: the gateway only answers "Does it meet the contract? Yes/No".
+- **Error capture**: Pydantic error details feed the AI Agent for repair or DLQ.
+- **Chaining**: the flow does not crash; it is diverted in a controlled way to repair or DLQ.
 
 ### Tests
 
 ```bash
-# Solo unit + escenarios (no requieren servidor)
+# Unit + scenarios only (no server required)
 pytest -m "not integration" -v
 
-# Con cobertura
+# With coverage
 pytest -m "not integration" --cov=contracts -v
 
-# Integración (servidor Motia/III en marcha)
+# Integration (Motia/III server running)
 export SENTINEL_INGEST_URL=http://localhost:3111/ingest
 pytest -m integration -v
 ```
 
-Los escenarios incluyen **ruptura del contrato OrderEvent** (`test_sentinel_order_event_contract_rupture_invalid_email`); corredlos en CI para validar resiliencia.
+Scenarios include **OrderEvent contract breach** (`test_sentinel_order_event_contract_rupture_invalid_email`); run them in CI to validate resilience.
 
-## Escenarios de prueba
+## Test scenarios
 
-| Escenario        | Descripción                    | Comprobación                                              |
-|------------------|--------------------------------|-----------------------------------------------------------|
-| **Happy path**   | JSON válido                    | Ingestor → Validador → validated_data → Loader            |
-| **Schema drift** | Campo renombrado (ej. price→amount) | validation_error → Healing Agent → schema_fixed (o DLQ) |
-| **Data corruption** | Dato inválido (ej. string en amount) | validation_error → DLQ si irreparable                   |
+| Scenario         | Description                    | Check                                                       |
+|------------------|--------------------------------|-------------------------------------------------------------|
+| **Happy path**   | Valid JSON                     | Ingestor → Validator → validated_data → Loader             |
+| **Schema drift** | Renamed field (e.g. price→amount) | validation_error → Healing Agent → schema_fixed (or DLQ) |
+| **Data corruption** | Invalid data (e.g. string in amount) | validation_error → DLQ if unrecoverable                 |
 
-## Configuración del Agente de IA
+## AI Agent configuration
 
-Pon estas variables en tu `.env` (no en el código):
+Put these variables in your `.env` (not in code):
 
-- `OPENAI_API_KEY`: necesario para que el Healing Agent invoque el LLM cuando no haya regla en cache.
-- `OPENAI_REMEDIATION_MODEL`: modelo a usar (por defecto `gpt-4o-mini`).
+- `OPENAI_API_KEY`: required for the Healing Agent to call the LLM when there is no rule in cache.
+- `OPENAI_REMEDIATION_MODEL`: model to use (default `gpt-4o-mini`).
 
-### Prompt maestro (zero hallucination)
+### Master prompt (zero hallucination)
 
-El AI Step usa un **system prompt estricto** orientado a esquemas y solo a reparaciones estructurales:
+The AI Step uses a **strict system prompt** focused on schemas and structural repairs only:
 
-- **Zero Hallucination**: solo reparaciones estructurales (renombrar claves, castear tipos, dividir strings). Nunca inventar ni rellenar valores de negocio.
-- **Contract Adherence**: la salida debe coincidir con el JSON schema objetivo (Pydantic) que se le pasa.
-- **Formato**: la IA devuelve **solo JSON válido**; sin markdown, sin prosa. Así el pipeline puede hacer `json.loads()` directamente.
-- **Irreparable**: si la reparación es ambigua o requiere lógica de negocio (p. ej. calcular un total faltante), la IA devuelve `{"reason": "..."}` y el Sentinel envía el evento a DLQ en lugar de inventar datos.
+- **Zero Hallucination**: only structural repairs (rename keys, cast types, split strings). Never invent or fill business values.
+- **Contract Adherence**: output must match the target JSON schema (Pydantic) passed to it.
+- **Format**: the AI returns **valid JSON only**; no markdown, no prose. So the pipeline can call `json.loads()` directly.
+- **Unrecoverable**: if repair is ambiguous or requires business logic (e.g. computing a missing total), the AI returns `{"reason": "..."}` and the Sentinel sends the event to DLQ instead of inventing data.
 
-El prompt recibe: `raw_payload`, `error_details` (de Pydantic) y `target_schema` (de `TransactionSchema.model_json_schema()`), de modo que el modelo sabe exactamente qué estructura debe devolver. Definición completa en `src/healing_agent_step.py` (constante `MASTER_PROMPT`).
+The prompt receives: `raw_payload`, `error_details` (from Pydantic), and `target_schema` (from `TransactionSchema.model_json_schema()`), so the model knows exactly what structure to return. Full definition in `src/healing_agent_step.py` (constant `MASTER_PROMPT`).
 
-### Cache-Aside (Memoización) y ciclo de aprendizaje
+### Cache-Aside (Memoization) and learning cycle
 
-**Look-up → Decide → Learn.** Llamar al LLM por cada evento es insostenible; el State convierte reparación (lenta/cara) en lectura en memoria (rápida/barata).
+**Look-up → Decide → Learn.** Calling the LLM for every event is unsustainable; State turns repair (slow/expensive) into in-memory read (fast/cheap).
 
-1. **Look-up**: Al fallar la validación, el Validador calcula una firma del error y consulta el State (`repair_rules`). Si existe regla y no está expirada, aplica.
-2. **Decide**: Si hay regla → aplicar (idempotente) y re-validar → emitir `schema_fixed`. Si no → emitir `validation_error` al Healing Agent.
-3. **Learn**: Cuando la IA repara con éxito, el Agente persiste una o más `RepairRule` (source_field, target_field, transformation_type) en State con **TTL**. A partir de entonces, ese mismo error se resuelve en milisegundos sin gastar tokens.
+1. **Look-up**: On validation failure, the Validator computes an error signature and queries State (`repair_rules`). If a rule exists and is not expired, it applies it.
+2. **Decide**: If rule exists → apply (idempotent) and re-validate → emit `schema_fixed`. If not → emit `validation_error` to the Healing Agent.
+3. **Learn**: When the AI repairs successfully, the Agent persists one or more `RepairRule` (source_field, target_field, transformation_type) in State with **TTL**. From then on, the same error is resolved in milliseconds without spending tokens.
 
-**Buenas prácticas:**
+**Best practices:**
 
-- **TTL (Time To Live)**: Las reglas tienen `expires_at`. Variable de entorno `REPAIR_RULE_TTL_DAYS` (por defecto 7). Tras la expiración, la IA puede re-evaluar (las APIs de terceros pueden haber cambiado de nuevo).
-- **Idempotencia**: Al aplicar una regla, si el campo destino ya existe en el payload no se sobrescribe. No aplicar dos veces la misma transformación al mismo objeto.
-- **Separación de responsabilidades**: El Validador orquesta; delega a `repair_state` (CacheProvider) o al Healing Agent (AIProvider). No mezclar lógica de “reparación conocida” con “descubrimiento vía IA”.
+- **TTL (Time To Live)**: Rules have `expires_at`. Environment variable `REPAIR_RULE_TTL_DAYS` (default 7). After expiry, the AI can re-evaluate (third-party APIs may have changed again).
+- **Idempotency**: When applying a rule, if the target field already exists in the payload it is not overwritten. Do not apply the same transformation twice to the same object.
+- **Separation of concerns**: The Validator orchestrates; it delegates to `repair_state` (CacheProvider) or the Healing Agent (AIProvider). Do not mix "known repair" logic with "discovery via AI".
 
-## Observabilidad
+## Observability
 
-- **Workbench III**: Grafo de eventos y logs de cada step.
-- **Feedback loop**: Revisar periódicamente la DLQ y los logs del Agente para ajustar contratos en `contracts/v1` y reglas de reparación.
+- **III Workbench**: Event graph and logs per step.
+- **Feedback loop**: Periodically review the DLQ and Agent logs to adjust contracts in `contracts/v1` and repair rules.
 
-## Mejoras para producción / portafolio (sugerencias senior)
+## Production / portfolio improvements (senior suggestions)
 
-- **Idempotencia del pipeline**: El Loader es idempotente: usa el `event_id` del Envelope para comprobar en State si el evento ya fue procesado. En reintentos por fallo de red no se duplican registros en el DWH. Clave en State: `loader_processed` por `event_id` (o `request_id` si no hay `event_id`).
-- **Validación del JSON reparado**: En el Healing Agent, el JSON devuelto por la IA se re-valida siempre con el esquema objetivo (`model_validate`) antes de emitir `schema_fixed`. Si la re-validación falla, se registra en log y el evento va a DLQ; no se emite dato inválido.
-- **Evolución del contrato (Schema Factory)**: El campo `version` del Envelope permite soportar varias versiones del contrato. En `contracts/v1/schema_factory.py`: `get_order_event_model(version)` y `get_transaction_model(version)` devuelven la clase correcta (p. ej. `OrderEvent` para `"1.0.0"`; al añadir `OrderEventV2` para `"2.0.0"`, se registra en `ORDER_EVENT_REGISTRY` y el Validador/Healing Agent pueden instanciar la clase adecuada sin cambiar la lógica del pipeline).
+- **Pipeline idempotency**: The Loader is idempotent: it uses the Envelope's `event_id` to check in State whether the event was already processed. On retries due to network failure, records are not duplicated in the DWH. State key: `loader_processed` by `event_id` (or `request_id` if no `event_id`).
+- **Repaired JSON validation**: In the Healing Agent, the JSON returned by the AI is always re-validated against the target schema (`model_validate`) before emitting `schema_fixed`. If re-validation fails, it is logged and the event goes to DLQ; invalid data is not emitted.
+- **Contract evolution (Schema Factory)**: The Envelope's `version` field allows supporting multiple contract versions. In `contracts/v1/schema_factory.py`: `get_order_event_model(version)` and `get_transaction_model(version)` return the correct class (e.g. `OrderEvent` for `"1.0.0"`; when adding `OrderEventV2` for `"2.0.0"`, register it in `ORDER_EVENT_REGISTRY` and the Validator/Healing Agent can instantiate the right class without changing pipeline logic).
 
-## Recomendaciones para ingeniería
+## Engineering recommendations
 
-- **DLQ (Dead Letter Queue)**: Si la IA falla 3 veces (o N configurado) al reparar un dato, mover ese mensaje a una base o cola de "errores humanos". No borrar datos que fallaron; permiten auditoría y mejora de contratos.
-- **Logging estructurado**: Guardar logs en formato legible por Datadog, ELK o el Workbench de Motia. Poder filtrar por `status: "failed"` para ver qué fuentes son inestables.
-- **Testing de regresión**: Cada cambio en el contrato (p. ej. `OrderEvent`) debe ir acompañado de la ejecución de `test_sentinel.py` y de los escenarios con el JSON anterior, para comprobar retrocompatibilidad o planificar la migración.
+- **DLQ (Dead Letter Queue)**: If the AI fails 3 times (or N as configured) to repair data, move that message to a "human errors" store or queue. Do not delete failed data; it allows auditing and contract improvement.
+- **Structured logging**: Store logs in a format consumable by Datadog, ELK, or the Motia Workbench. Be able to filter by `status: "failed"` to see which sources are unstable.
+- **Regression testing**: Every contract change (e.g. `OrderEvent`) should be accompanied by running `test_sentinel.py` and the scenarios with the previous JSON, to verify backward compatibility or plan migration.
 
-## Despliegue
+## Deployment
 
-- Despliega el proyecto en la infraestructura donde corre Motia/III (según tu pipeline CI/CD).
-- Los steps se descubren desde `src/*_step.py`; no es necesario registrar manualmente el orquestador.
-- Configura colas y reintentos en el `iii-config.yaml` de III si aplica.
+- Deploy the project on the infrastructure where Motia/III runs (according to your CI/CD pipeline).
+- Steps are discovered from `src/*_step.py`; no need to register them manually with the orchestrator.
+- Configure queues and retries in III's `iii-config.yaml` if applicable.
 
-## Licencia
+## License
 
-Apache-2.0 (o la que definas para el repo).
+Apache-2.0 (or whatever you define for the repo).

@@ -1,6 +1,6 @@
-# Configuración del motor III (runtime de Motia) para data-sentinel.
-# Sin este archivo, III usa "default modules" y no carga tus steps de Python.
-# Ejecutar desde la raíz del proyecto: iii -c iii-config.yaml
+# III engine configuration (Motia runtime) for data-sentinel.
+# Without this file, III uses "default modules" and does not load your Python steps.
+# Run from project root: iii -c iii-config.yaml
 
 modules:
   - class: modules::stream::StreamModule
@@ -63,12 +63,12 @@ modules:
       adapter:
         class: modules::cron::KvCronAdapter
 
-  # Este módulo ejecuta tu aplicación Motia (Python) y registra los steps desde src/
+  # This module runs your Motia (Python) app and registers steps from src/
   - class: modules::shell::ExecModule
     config:
       watch:
         - src/**/*.py
       exec:
-        # Descubre y registra steps en src/ (ingestor_step, validator_step, etc.)
-        # Si no usas uv, cambia a: python -m motia run --dir src
+        # Discovers and registers steps in src/ (ingestor_step, validator_step, etc.)
+        # If you don't use uv, change to: python -m motia run --dir src
         - uv run motia run --dir src

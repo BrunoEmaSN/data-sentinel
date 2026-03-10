@@ -1,7 +1,7 @@
 """
-Integration tests: flujo completo vía API de ingest.
-Requieren servidor Motia/III en ejecución (ej. npm run dev / iii).
-Ver README para puertos y variables de entorno.
+Integration tests: full flow via ingest API.
+Require Motia/III server running (e.g. npm run dev / iii).
+See README for ports and environment variables.
 """
 import os
 import uuid
@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytest
 
-# Marcar todo el módulo como integration para poder excluirlo con pytest -m "not integration"
+# Mark the whole module as integration so it can be excluded with pytest -m "not integration"
 pytestmark = pytest.mark.integration
 
 INGEST_URL = os.environ.get("SENTINEL_INGEST_URL", "http://localhost:3111/ingest")
@@ -31,12 +31,12 @@ def valid_transaction_payload():
 
 @pytest.fixture
 def schema_drift_payload():
-    """Campo 'price' en lugar de 'amount' (schema drift)."""
+    """Field 'price' instead of 'amount' (schema drift)."""
     return {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
         "source": "shopify",
-        "price": "29.99",  # drift: debería ser 'amount'
+        "price": "29.99",  # drift: should be 'amount'
         "currency": "USD",
         "user_id": str(uuid.uuid4()),
         "email": "drift@example.com",
@@ -45,7 +45,7 @@ def schema_drift_payload():
 
 @pytest.fixture
 def corrupted_payload():
-    """Dato corrupto: string donde debe ir número."""
+    """Corrupted data: string where number is expected."""
     return {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
@@ -59,14 +59,14 @@ def corrupted_payload():
 
 @pytest.mark.asyncio
 async def test_happy_path_ingest_accepts(valid_transaction_payload):
-    """Happy path: POST a /ingest con JSON válido debe ser aceptado (202)."""
+    """Happy path: POST to /ingest with valid JSON should be accepted (202)."""
     try:
         import httpx
     except ImportError:
         pytest.skip("httpx not installed")
     async with httpx.AsyncClient() as client:
         resp = await client.post(INGEST_URL, json=valid_transaction_payload, timeout=10.0)
-    # Sin servidor: puede fallar por conexión; con servidor: 202
+    # Without server: may fail due to connection; with server: 202
     if resp.status_code == 202:
         body = resp.json()
         assert "request_id" in body
@@ -75,7 +75,7 @@ async def test_happy_path_ingest_accepts(valid_transaction_payload):
 
 @pytest.mark.asyncio
 async def test_schema_drift_ingest_accepts(schema_drift_payload):
-    """Schema drift: el ingestor acepta igual (no valida); el validador fallará y el agente puede reparar."""
+    """Schema drift: ingestor still accepts (does not validate); validator will fail and agent may repair."""
     try:
         import httpx
     except ImportError:
@@ -88,7 +88,7 @@ async def test_schema_drift_ingest_accepts(schema_drift_payload):
 
 @pytest.mark.asyncio
 async def test_data_corruption_ingest_accepts(corrupted_payload):
-    """Data corruption: el ingestor acepta; validador rechaza y puede ir a DLQ."""
+    """Data corruption: ingestor accepts; validator rejects and may go to DLQ."""
     try:
         import httpx
     except ImportError:

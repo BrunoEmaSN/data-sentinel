@@ -1,5 +1,5 @@
 """
-Contratos v1 - Fuente de verdad para esquemas del dominio.
+Contracts v1 - Source of truth for domain schemas.
 """
 from contracts.v1.event import BaseEvent, EventEnvelope
 from contracts.v1.order import OrderEvent, OrderItem, OrderPayload

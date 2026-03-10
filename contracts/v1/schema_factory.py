@@ -1,22 +1,22 @@
 """
-Factory de validación por versión del contrato.
+Validation factory by contract version.
 
-Permite instanciar la clase correcta (OrderEvent v1, v2, etc.) según el campo
-version del EventEnvelope. Cuando version "2.0.0" añada campos obligatorios nuevos,
-registrar aquí OrderEventV2 y el pipeline seguirá funcionando sin breaking changes.
+Allows instantiating the correct class (OrderEvent v1, v2, etc.) based on the
+EventEnvelope version field. When version "2.0.0" adds new required fields,
+register OrderEventV2 here and the pipeline will keep working without breaking changes.
 """
 from typing import Type
 
 from contracts.v1.order import OrderEvent
 from contracts.v1.transaction import TransactionSchema
 
-# Registro: version -> modelo de orden. Añadir "2.0.0": OrderEventV2 cuando exista.
+# Registry: version -> order model. Add "2.0.0": OrderEventV2 when it exists.
 ORDER_EVENT_REGISTRY: dict[str, Type[OrderEvent]] = {
     "1.0.0": OrderEvent,
-    # "2.0.0": OrderEventV2,  # cuando tengas campos nuevos obligatorios
+    # "2.0.0": OrderEventV2,  # when you have new required fields
 }
 
-# Transacciones: por ahora un solo esquema; ampliar si se versiona.
+# Transactions: single schema for now; extend if versioned.
 TRANSACTION_REGISTRY: dict[str, Type] = {
     "1.0.0": TransactionSchema,
 }
@@ -24,20 +24,20 @@ TRANSACTION_REGISTRY: dict[str, Type] = {
 
 def get_order_event_model(version: str) -> Type[OrderEvent] | None:
     """
-    Devuelve el modelo de OrderEvent para la versión indicada.
-    Si la versión no está registrada, devuelve None (el llamador puede fallar o usar default).
+    Returns the OrderEvent model for the given version.
+    If the version is not registered, returns None (caller may fail or use default).
     """
     return ORDER_EVENT_REGISTRY.get(version)
 
 
 def get_order_event_model_or_latest(version: str) -> Type[OrderEvent]:
     """
-    Devuelve el modelo para la versión, o el más reciente conocido (1.0.0) si no existe.
-    Útil para no romper cuando lleguen versiones nuevas aún no soportadas.
+    Returns the model for the version, or the latest known (1.0.0) if it does not exist.
+    Useful to avoid breaking when new unsupported versions arrive.
     """
     return get_order_event_model(version) or OrderEvent
 
 
 def get_transaction_model(version: str) -> Type[TransactionSchema]:
-    """Devuelve el modelo de transacción para la versión (por ahora siempre TransactionSchema)."""
+    """Returns the transaction model for the version (for now always TransactionSchema)."""
     return TRANSACTION_REGISTRY.get(version) or TransactionSchema

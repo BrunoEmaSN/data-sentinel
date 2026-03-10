@@ -1,6 +1,6 @@
 """
-Unit tests: modelos Pydantic en contracts/v1.
-Casos borde: campos faltantes, tipos erróneos, valores límite.
+Unit tests: Pydantic models in contracts/v1.
+Edge cases: missing fields, wrong types, boundary values.
 """
 import uuid
 from decimal import Decimal
@@ -15,7 +15,7 @@ from contracts.v1.transaction import TransactionSchema
 
 
 class TestBaseEvent:
-    """Casos borde para BaseEvent."""
+    """Edge cases for BaseEvent."""
 
     def test_valid_minimal(self):
         e = BaseEvent(source="stripe")
@@ -37,7 +37,7 @@ class TestBaseEvent:
 
 
 class TestEventEnvelope:
-    """Casos para el sobre (Envelope) con versionado."""
+    """Cases for the envelope with versioning."""
 
     def test_valid_defaults(self):
         e = EventEnvelope()
@@ -53,7 +53,7 @@ class TestEventEnvelope:
 
 
 class TestOrderItem:
-    """Validación de negocio en ítems de orden."""
+    """Business validation for order items."""
 
     def test_valid(self):
         item = OrderItem(sku="SKU-001", quantity=2, price=9.99)
@@ -75,13 +75,13 @@ class TestOrderItem:
 
 
 class TestOrderPayload:
-    """Payload de orden: email, currency, items."""
+    """Order payload: email, currency, items."""
 
     @pytest.fixture
     def valid_payload(self):
         return {
             "order_id": "ORD-123",
-            "customer_email": "cliente@example.com",
+            "customer_email": "customer@example.com",
             "items": [{"sku": "A", "quantity": 1, "price": 10.0}],
             "total_amount": 10.0,
             "currency": "USD",
@@ -90,13 +90,13 @@ class TestOrderPayload:
     def test_valid(self, valid_payload):
         p = OrderPayload.model_validate(valid_payload)
         assert p.order_id == "ORD-123"
-        assert str(p.customer_email) == "cliente@example.com"
+        assert str(p.customer_email) == "customer@example.com"
         assert len(p.items) == 1
         assert p.items[0].sku == "A"
         assert p.currency == "USD"
 
     def test_invalid_email(self, valid_payload):
-        valid_payload["customer_email"] = "no-es-email"
+        valid_payload["customer_email"] = "not-an-email"
         with pytest.raises(ValidationError):
             OrderPayload.model_validate(valid_payload)
 
@@ -107,7 +107,7 @@ class TestOrderPayload:
 
 
 class TestOrderEvent:
-    """Contrato final: Envelope + Payload."""
+    """Final contract: Envelope + Payload."""
 
     @pytest.fixture
     def valid_order_event(self):
@@ -135,14 +135,14 @@ class TestOrderEvent:
         assert ev.payload.items[0].quantity == 3
 
     def test_contract_fail_before_process(self, valid_order_event):
-        """Si el contrato no se cumple, falla antes de procesar (payload inválido)."""
+        """If the contract is not met, it fails before processing (invalid payload)."""
         valid_order_event["payload"]["customer_email"] = "invalid"
         with pytest.raises(ValidationError):
             OrderEvent.model_validate(valid_order_event)
 
 
 class TestTransactionSchema:
-    """Casos borde para TransactionSchema."""
+    """Edge cases for TransactionSchema."""
 
     @pytest.fixture
     def valid_payload(self):
@@ -201,7 +201,7 @@ class TestTransactionSchema:
             TransactionSchema.model_validate(valid_payload)
 
     def test_schema_drift_price_instead_of_amount(self, valid_payload):
-        """Simula drift: campo 'price' en lugar de 'amount'."""
+        """Simulates drift: 'price' field instead of 'amount'."""
         valid_payload["price"] = valid_payload.pop("amount")
         with pytest.raises(ValidationError) as exc_info:
             TransactionSchema.model_validate(valid_payload)

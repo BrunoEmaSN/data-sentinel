@@ -1,8 +1,8 @@
 """
-Agente de reparación (Healing Agent): escucha validation_error.
-Cache-Aside: 1) Buscar en State (CacheProvider) regla conocida; 2) Si no hay, llamar al LLM.
-Al aprender: persiste RepairRule con TTL para que la IA re-evalúe tras expiración.
-Separación: orquestador delega a repair_state (cache) o a _call_llm_for_fix (AIProvider).
+Repair Agent (Healing Agent): listens to validation_error.
+Cache-Aside: 1) Look up State (CacheProvider) for known rule; 2) If none, call LLM.
+On learn: persists RepairRule with TTL so the AI re-evaluates after expiry.
+Separation: orchestrator delegates to repair_state (cache) or _call_llm_for_fix (AIProvider).
 """
 import json
 import os
@@ -14,7 +14,7 @@ from typing import Any
 # Ensure src/ is on sys.path so sibling modules (config, repair_state) are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Cargar .env antes de leer os.environ (datos sensibles en .env)
+# Load .env before reading os.environ (sensitive data in .env)
 import config  # noqa: F401
 
 from motia import FlowContext, queue
@@ -30,14 +30,14 @@ from repair_state import (
     set_repair_rule,
 )
 
-# Esquema objetivo: se resuelve por versión (factory) para soportar v2 en el futuro
+# Target schema: resolved by version (factory) to support v2 in the future
 def _target_schema_model(payload: dict) -> type:
     return get_transaction_model(payload.get("version", "1.0.0"))
-# TTL en días para reglas nuevas (configurable por env)
+# TTL in days for new rules (configurable via env)
 REPAIR_RULE_TTL_DAYS_ENV = "REPAIR_RULE_TTL_DAYS"
 DEFAULT_TTL_DAYS = 7
 
-# --- PROMPT MAESTRO: estricto, orientado a esquema, sin alucinaciones ---
+# --- MASTER PROMPT: strict, schema-oriented, no hallucination ---
 MASTER_PROMPT = """Role: You are an expert Data Reliability Engineer specialized in automated Schema Drift Repair.
 
 Objective: Fix incoming raw data payloads that fail validation against a defined Pydantic Schema.
@@ -61,7 +61,7 @@ Execution Strategy:
 
 config = {
     "name": "HealingAgent",
-    "description": "Repara datos con error de validación usando reglas cacheadas o LLM",
+    "description": "Repairs data with validation error using cached rules or LLM",
     "triggers": [queue("validation_error")],
     "enqueues": ["schema_fixed", "validation_unrecoverable"],
     "flows": ["data-sentinel"],
@@ -69,7 +69,7 @@ config = {
 
 
 def _ttl_days() -> int:
-    """TTL en días para reglas nuevas (env REPAIR_RULE_TTL_DAYS)."""
+    """TTL in days for new rules (env REPAIR_RULE_TTL_DAYS)."""
     try:
         return int(os.environ.get(REPAIR_RULE_TTL_DAYS_ENV, DEFAULT_TTL_DAYS))
     except ValueError:
@@ -78,13 +78,13 @@ def _ttl_days() -> int:
 
 def _extract_json_from_response(content: str) -> dict | None:
     """
-    Extrae el primer objeto JSON de la respuesta del LLM.
-    Sin markdown, sin prosa: solo JSON. Si encuentra {"reason": "..."} -> irreparable.
+    Extracts the first JSON object from the LLM response.
+    No markdown, no prose: JSON only. If it finds {"reason": "..."} -> unrecoverable.
     """
     text = (content or "").strip()
     if not text:
         return None
-    # Quitar bloques markdown ```json ... ```
+    # Remove markdown blocks ```json ... ```
     if "```" in text:
         match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
         if match:
@@ -93,7 +93,7 @@ def _extract_json_from_response(content: str) -> dict | None:
         obj = json.loads(text)
         if not isinstance(obj, dict):
             return None
-        # Irreparable: el modelo devolvió solo reason (regla 4 del prompt)
+        # Unrecoverable: model returned only reason (rule 4 of prompt)
         if set(obj.keys()) <= {"reason"} and "reason" in obj:
             return None
         return obj
@@ -103,8 +103,8 @@ def _extract_json_from_response(content: str) -> dict | None:
 
 async def _call_llm_for_fix(payload: dict, error_details: list[dict], ctx: FlowContext) -> dict | None:
     """
-    Invoca LLM con el prompt maestro (esquema estricto, zero hallucination).
-    Devuelve el JSON corregido o None si irreparable o sin API key.
+    Calls LLM with master prompt (strict schema, zero hallucination).
+    Returns corrected JSON or None if unrecoverable or no API key.
     """
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -138,8 +138,8 @@ async def _call_llm_for_fix(payload: dict, error_details: list[dict], ctx: FlowC
 
 async def handler(data: dict, ctx: FlowContext) -> None:
     """
-    Cache-Aside: 1) Look-up State (regla conocida). 2) Si hay regla, aplicar (idempotente).
-    3) Si no, llamar a IA. 4) Learn: persistir RepairRule con TTL para próximas veces.
+    Cache-Aside: 1) Look-up State (known rule). 2) If rule exists, apply (idempotent).
+    3) If not, call AI. 4) Learn: persist RepairRule with TTL for next time.
     """
     request_id = data.get("request_id", "")
     payload = data.get("payload", {})
@@ -181,7 +181,7 @@ async def handler(data: dict, ctx: FlowContext) -> None:
                 ctx.logger.info("Persisted repair rule with TTL", {"rule_key": sig, "ttl_days": ttl})
 
     if corrected is not None:
-        # Re-validar siempre: la IA puede omitir una regla del contrato. No emitir sin validar.
+        # Always re-validate: the AI may skip a contract rule. Do not emit without validating.
         schema_cls = _target_schema_model(payload)
         try:
             validated = schema_cls.model_validate(corrected)
@@ -197,9 +197,9 @@ async def handler(data: dict, ctx: FlowContext) -> None:
                 "Repaired payload failed re-validation; sending to DLQ",
                 {"request_id": request_id, "errors": reval_err.errors()},
             )
-            # No emitir schema_fixed: el JSON reparado no cumple el contrato
+            # Do not emit schema_fixed: repaired JSON does not meet the contract
 
-    # Irreparable: enviar a DLQ
+    # Unrecoverable: send to DLQ
     dlq_payload = {
         "request_id": request_id,
         "payload": payload,

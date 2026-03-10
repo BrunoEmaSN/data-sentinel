@@ -1,7 +1,7 @@
 """
-Validador optimizado (Cache-Aside): escucha raw_event, valida con Pydantic.
-Look-up -> Decide -> Learn: si falla, busca regla en State y re-valida antes de emitir error.
-Emite validated_data, schema_fixed (reparación por cache) o validation_error.
+Optimized Validator (Cache-Aside): listens to raw_event, validates with Pydantic.
+Look-up -> Decide -> Learn: on failure, looks up rule in State and re-validates before emitting error.
+Emits validated_data, schema_fixed (cache repair) or validation_error.
 """
 from motia import FlowContext, queue
 
@@ -12,7 +12,7 @@ from repair_state import apply_rule_idempotent, error_signature, get_repair_rule
 
 config = {
     "name": "DataValidator",
-    "description": "Valida payload; si falla, aplica regla en cache (Cache-Aside) o emite validation_error",
+    "description": "Validates payload; on failure, applies cached rule (Cache-Aside) or emits validation_error",
     "triggers": [queue("raw_event")],
     "enqueues": ["validated_data", "schema_fixed", "validation_error"],
     "flows": ["data-sentinel"],
@@ -21,8 +21,8 @@ config = {
 
 async def handler(data: dict, ctx: FlowContext) -> None:
     """
-    Flujo: 1) Validar. 2) Si falla, buscar en State (CacheProvider). 3) Si hay regla, aplicar
-    (idempotente) y re-validar. 4) Solo si no hay regla o sigue fallando, emitir validation_error.
+    Flow: 1) Validate. 2) On failure, look up State (CacheProvider). 3) If rule exists, apply
+    (idempotent) and re-validate. 4) Only if no rule or still failing, emit validation_error.
     """
     request_id = data.get("request_id", "")
     raw = data.get("raw", {})
@@ -41,7 +41,7 @@ async def handler(data: dict, ctx: FlowContext) -> None:
     except ValidationError as e:
         error_details = e.errors()
 
-    # Cache-Aside: ¿ya conocemos este error?
+    # Cache-Aside: do we already know this error?
     sig = error_signature([{"loc": err["loc"], "type": err["type"]} for err in error_details])
     rule = await get_repair_rule(ctx, sig)
 
@@ -59,7 +59,7 @@ async def handler(data: dict, ctx: FlowContext) -> None:
         except ValidationError:
             pass
 
-    # Sin regla o regla no aplicable: delegar al Healing Agent (AI)
+    # No rule or rule not applicable: delegate to Healing Agent (AI)
     error_payload = {
         "request_id": request_id,
         "payload": raw,

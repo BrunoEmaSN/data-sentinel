@@ -1,5 +1,5 @@
 """
-Esquema de transacción - verdad de negocio para validación.
+Transaction schema - source of truth for validation.
 """
 from decimal import Decimal
 from uuid import UUID
@@ -11,8 +11,8 @@ from contracts.v1.event import BaseEvent
 
 class TransactionSchema(BaseEvent):
     """
-    Esquema esperado de una transacción.
-    Usado por el Validador y como referencia en el Agente de reparación.
+    Expected schema for a transaction.
+    Used by the Validator and as reference in the Repair Agent.
     """
 
     amount: Decimal = Field(..., gt=0)

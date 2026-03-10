@@ -1,8 +1,8 @@
 """
-Escenarios de prueba descritos en el plan:
-1. Happy path: JSON perfecto -> validated_data -> Loader
-2. Schema drift: campo renombrado -> validation_error -> Healing Agent -> schema_fixed
-3. Data corruption: basura -> validation_error -> DLQ
+Test scenarios as described in the plan:
+1. Happy path: valid JSON -> validated_data -> Loader
+2. Schema drift: renamed field -> validation_error -> Healing Agent -> schema_fixed
+3. Data corruption: garbage -> validation_error -> DLQ
 """
 import uuid
 from datetime import datetime
@@ -16,7 +16,7 @@ from contracts.v1.transaction import TransactionSchema
 
 
 def test_scenario_happy_path_contract():
-    """Happy path a nivel de contrato: JSON válido se parsea correctamente."""
+    """Happy path at contract level: valid JSON parses correctly."""
     payload = {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
@@ -34,7 +34,7 @@ def test_scenario_happy_path_contract():
 
 
 def test_scenario_schema_drift_detected():
-    """Schema drift: 'email' -> 'user_email' (o 'price' -> 'amount') debe fallar validación."""
+    """Schema drift: 'email' -> 'user_email' (or 'price' -> 'amount') must fail validation."""
     payload = {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
@@ -42,7 +42,7 @@ def test_scenario_schema_drift_detected():
         "amount": "50.00",
         "currency": "EUR",
         "user_id": str(uuid.uuid4()),
-        "user_email": "user@shopify.com",  # drift: debería ser 'email'
+        "user_email": "user@shopify.com",  # drift: should be 'email'
     }
     with pytest.raises(ValidationError) as exc_info:
         TransactionSchema.model_validate(payload)
@@ -51,7 +51,7 @@ def test_scenario_schema_drift_detected():
 
 
 def test_scenario_schema_drift_price_instead_of_amount():
-    """Schema drift clásico: 'price' en lugar de 'amount'."""
+    """Classic schema drift: 'price' instead of 'amount'."""
     payload = {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
@@ -66,7 +66,7 @@ def test_scenario_schema_drift_price_instead_of_amount():
 
 
 def test_scenario_data_corruption_rejected():
-    """Data corruption: string donde debe ir número -> validación falla."""
+    """Data corruption: string where number is expected -> validation fails."""
     payload = {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
@@ -83,7 +83,7 @@ def test_scenario_data_corruption_rejected():
 
 
 def test_scenario_data_corruption_invalid_uuid():
-    """Data corruption: user_id no es UUID."""
+    """Data corruption: user_id is not a UUID."""
     payload = {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
@@ -97,13 +97,13 @@ def test_scenario_data_corruption_invalid_uuid():
         TransactionSchema.model_validate(payload)
 
 
-# --- Data Sentinel: Ruptura del contrato OrderEvent ---
+# --- Data Sentinel: OrderEvent contract breach ---
 
 
 def test_sentinel_order_event_contract_rupture_invalid_email():
     """
-    Simulación Data Sentinel: dato malformado (email inválido) es rechazado
-    y el error se captura con detalle para reparación/DLQ.
+    Data Sentinel simulation: malformed data (invalid email) is rejected
+    and the error is captured in detail for repair/DLQ.
     """
     bad_data = {
         "event_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -125,7 +125,7 @@ def test_sentinel_order_event_contract_rupture_invalid_email():
 
 
 def test_sentinel_order_event_valid_passes():
-    """Contraste: dato válido pasa el validation_gateway (OrderEvent)."""
+    """Contrast: valid data passes the validation_gateway (OrderEvent)."""
     good_data = {
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow().isoformat(),
@@ -133,7 +133,7 @@ def test_sentinel_order_event_valid_passes():
         "source": "ecommerce_api",
         "payload": {
             "order_id": "ORD-456",
-            "customer_email": "cliente@ejemplo.com",
+            "customer_email": "customer@example.com",
             "items": [{"sku": "PROD-2", "quantity": 2, "price": 25.0}],
             "total_amount": 50.0,
             "currency": "EUR",
@@ -141,4 +141,4 @@ def test_sentinel_order_event_valid_passes():
     }
     event = OrderEvent.model_validate(good_data)
     assert event.payload.order_id == "ORD-456"
-    assert str(event.payload.customer_email) == "cliente@ejemplo.com"
+    assert str(event.payload.customer_email) == "customer@example.com"

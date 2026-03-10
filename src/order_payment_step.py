@@ -1,9 +1,9 @@
 """
-Step de procesamiento de pago de orden.
+Order payment processing step.
 
-Ejemplo de uso del contrato OrderEvent: el evento crudo se valida en la entrada.
-Si el contrato no se cumple, Pydantic lanza ValidationError antes de procesar
-y el evento puede ir a DLQ según la configuración de Motia.
+Example of using the OrderEvent contract: raw event is validated at input.
+If the contract is not met, Pydantic raises ValidationError before processing
+and the event may go to DLQ according to Motia configuration.
 """
 from motia import FlowContext, queue
 
@@ -11,7 +11,7 @@ from contracts.v1.order import OrderEvent
 
 config = {
     "name": "process_order_payment",
-    "description": "Valida evento de orden con OrderEvent y procesa el pago; falla si el contrato no se cumple.",
+    "description": "Validates order event with OrderEvent and processes payment; fails if contract is not met.",
     "triggers": [queue("order_event")],
     "enqueues": ["order_payment_processed"],
     "flows": ["data-sentinel"],
@@ -20,15 +20,15 @@ config = {
 
 async def handler(event_data: dict, ctx: FlowContext) -> None:
     """
-    Recibe el evento crudo; valida con OrderEvent antes de cualquier lógica.
-    Garantiza que no se procesan datos inválidos: si el contrato falla, se lanza
-    ValidationError y el orquestador puede enviar a DLQ (UNPROCESSED_DLQ).
+    Receives raw event; validates with OrderEvent before any logic.
+    Ensures invalid data is not processed: if contract fails, ValidationError
+    is raised and the orchestrator may send to DLQ (UNPROCESSED_DLQ).
     """
     order = OrderEvent.model_validate(event_data)
 
-    # Acceso con tipado y autocompletado
+    # Typed access and autocomplete
     ctx.logger.info(
-        "Procesando orden",
+        "Processing order",
         {
             "order_id": order.payload.order_id,
             "customer_email": str(order.payload.customer_email),
@@ -36,7 +36,7 @@ async def handler(event_data: dict, ctx: FlowContext) -> None:
             "version": order.version,
         },
     )
-    # Aquí iría la lógica real de pago (Stripe, etc.)
+    # Real payment logic would go here (Stripe, etc.)
     await ctx.enqueue(
         {
             "topic": "order_payment_processed",

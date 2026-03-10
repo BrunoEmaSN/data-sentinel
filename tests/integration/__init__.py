@@ -1,1 +1,1 @@
-# Integration tests (requieren Motia/III en ejecución)
+# Integration tests (require Motia/III server running)

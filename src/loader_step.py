@@ -1,18 +1,18 @@
 """
-Loader (Final): escucha validated_data y schema_fixed; persiste en destino (DWH).
+Loader (Final): listens to validated_data and schema_fixed; persists to destination (DWH).
 
-Idempotencia: usa event_id del Envelope para verificar si el evento ya fue procesado.
-En reintentos por fallo de red no se duplican registros en el DWH.
+Idempotency: uses Envelope event_id to check if the event was already processed.
+On retries due to network failure, records are not duplicated in the DWH.
 """
 from motia import FlowContext, queue
 
-# State para idempotencia: claves por event_id (o request_id si no hay event_id)
+# State for idempotency: keys by event_id (or request_id if no event_id)
 LOADER_PROCESSED_GROUP = "loader"
 LOADER_PROCESSED_STREAM = "loader_processed"
 
 config = {
     "name": "DataLoader",
-    "description": "Inserta datos validados o reparados en el DWH (idempotente por event_id)",
+    "description": "Inserts validated or repaired data into the DWH (idempotent by event_id)",
     "triggers": [
         queue("validated_data"),
         queue("schema_fixed"),
@@ -23,7 +23,7 @@ config = {
 
 
 def _idempotency_key(data: dict) -> str:
-    """Clave única para este evento: event_id del Envelope o request_id como fallback."""
+    """Unique key for this event: Envelope event_id or request_id as fallback."""
     event_id = data.get("event_id")
     if event_id is not None:
         return str(event_id)
@@ -31,7 +31,7 @@ def _idempotency_key(data: dict) -> str:
 
 
 async def _already_processed(ctx: FlowContext, key: str) -> bool:
-    """True si este evento ya fue cargado (evita duplicados en reintentos)."""
+    """True if this event was already loaded (avoids duplicates on retries)."""
     try:
         from motia import Stream
         stream = Stream[dict](LOADER_PROCESSED_STREAM)
@@ -42,7 +42,7 @@ async def _already_processed(ctx: FlowContext, key: str) -> bool:
 
 
 async def _mark_processed(ctx: FlowContext, key: str, data: dict) -> None:
-    """Marca el evento como procesado en el State (para idempotencia)."""
+    """Marks the event as processed in State (for idempotency)."""
     try:
         from motia import Stream
         stream = Stream[dict](LOADER_PROCESSED_STREAM)
@@ -53,8 +53,8 @@ async def _mark_processed(ctx: FlowContext, key: str, data: dict) -> None:
 
 async def handler(data: dict, ctx: FlowContext) -> None:
     """
-    Carga en DWH de forma idempotente: si event_id ya fue procesado, se omite.
-    Así los reintentos por fallo de red no duplican registros.
+    Loads to DWH idempotently: if event_id was already processed, skip.
+    Thus retries due to network failure do not duplicate records.
     """
     key = _idempotency_key(data)
     request_id = data.get("request_id", "unknown")
@@ -64,8 +64,8 @@ async def handler(data: dict, ctx: FlowContext) -> None:
         return
 
     ctx.logger.info("Loading to DWH", {"request_id": request_id, "event_id": key})
-    # En producción: conectar a BD/warehouse e insertar.
-    # Aquí solo logueamos como simulación.
+    # In production: connect to DB/warehouse and insert.
+    # Here we only log as simulation.
     ctx.logger.info("Data loaded successfully", {"request_id": request_id, "keys": list(data.keys())})
 
     await _mark_processed(ctx, key, data)
