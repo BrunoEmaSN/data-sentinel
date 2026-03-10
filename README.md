@@ -1,4 +1,18 @@
-# Self-Healing Data Sentinel (Motia + EDA/DDD)
+<div align="center">
+  <br />
+    <a href="https://youtu.be/0fYi8SGA20k?feature=shared" target="_blank">
+      <img width="1888" height="544" alt="banner" src="https://github.com/user-attachments/assets/6466e56c-3bc4-4152-900e-9ccb6fc55013" />
+    </a>
+  <br />
+
+  <div>
+    <img src="https://img.shields.io/badge/-Python-black?style=for-the-badge&color=0183f0" alt="python" />
+    <img src="https://img.shields.io/badge/-Motia-black?style=for-the-badge&color=000000" alt="motia" />
+    <img src="https://img.shields.io/badge/-Openai-black?style=for-the-badge&color=0ea47e" alt="open-ai" />
+  </div>
+
+  <h3 align="center">A DATA SENTINEL</h3>
+</div>
 
 Pipeline orientado a eventos con **Motia** que ingesta datos crudos, valida contra contratos **Pydantic**, repara automáticamente con un agente de IA (y cache de reglas) y carga en destino. Los eventos irreparables van a una **Dead Letter Queue** para inspección humana.
 
