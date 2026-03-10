@@ -22,21 +22,46 @@ Ingestor (API)  →  raw_event  →  Validador  →  validated_data  →  Loader
 
 - Python 3.10+
 - [III Engine](https://iii.dev/) (runtime de Motia)
+- Opcional: [uv](https://docs.astral.sh/uv/) para ejecutar los steps (recomendado; el proyecto usa `uv run` en `iii-config.yaml`)
 - Opcional: `OPENAI_API_KEY` para que el Agente de reparación use el LLM (si no hay regla en cache).
 
 ## Instalación
 
+### 1. Instalar el runtime III (Motor de Motia)
+
+El III Engine es el runtime que ejecuta Motia. Instálalo en tu sistema:
+
 ```bash
-# Entorno virtual
+curl -fsSL https://install.iii.dev/iii/main/install.sh | sh
+```
+
+Comprueba la instalación:
+
+```bash
+iii -v
+```
+
+### 2. Dependencias del proyecto (Python)
+
+Clona el repo (si aplica) y, desde la raíz del proyecto:
+
+**Con uv (recomendado):**
+
+```bash
+uv sync
+# Con dependencias de desarrollo: uv sync --extra dev
+```
+
+**Con pip y venv:**
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-# Dependencias
 pip install -e ".[dev]"
 # o: pip install motia pydantic openai pytest pytest-asyncio httpx python-dotenv
 ```
 
-### Variables de entorno (datos sensibles en .env)
+### 3. Variables de entorno (datos sensibles en .env)
 
 Las claves y configuraciones sensibles van en un archivo `.env` en la raíz del proyecto (no se sube al repo).
 
@@ -76,11 +101,30 @@ Ver `.env.example` para la lista de variables. El archivo `.env` está en `.giti
 
 ## Uso
 
-### Ejecutar con Motia/III
+### Levantar el backend (Motia/III)
 
-1. Instala el runtime III: `curl -fsSL https://install.iii.dev/iii/main/install.sh | sh`
-2. Desde la raíz del proyecto (donde Motia espera `src/`), arranca el servidor según la guía de [Motia](https://motia.dev/docs/getting-started/quick-start) (por ejemplo `npx motia@latest create` en un proyecto Node que referencie este código, o el comando que use tu equipo para Python).
-3. El endpoint de ingest será algo como `POST http://localhost:3111/ingest` (puerto según tu `config.yaml` de III).
+Desde la raíz del proyecto, arranca el motor III con la configuración del repo. Esto levanta la API, colas, state y el proceso que ejecuta los steps de Motia (`src/*_step.py`):
+
+```bash
+iii -c iii-config.yaml
+```
+
+- El endpoint de ingest queda en **`POST http://localhost:3111/ingest`** (puerto definido en `iii-config.yaml`).
+- Los steps se descubren automáticamente desde `src/`; el módulo `ExecModule` ejecuta `uv run motia run --dir src`. Si no usas uv, edita `iii-config.yaml` y cambia a `python -m motia run --dir src`.
+
+### Levantar el Workbench de Motia
+
+El [Workbench](https://www.motia.dev/docs/concepts/workbench) es la consola visual para ver flujos, logs y probar endpoints. Con el backend ya en marcha (`iii -c iii-config.yaml`), en **otra terminal** ejecuta:
+
+```bash
+iii-console --enable-flow
+```
+
+Luego abre en el navegador:
+
+- **Workbench:** [http://localhost:3113/](http://localhost:3113/)
+
+Ahí puedes ver el grafo de eventos (Flow View), logs de cada step y probar el ingest desde la interfaz. Los cambios en `src/**/*.py` recargan solos gracias al modo watch del `ExecModule`.
 
 ### Contrato Envelope + Payload (órdenes)
 
@@ -209,7 +253,7 @@ El prompt recibe: `raw_payload`, `error_details` (de Pydantic) y `target_schema`
 
 - Despliega el proyecto en la infraestructura donde corre Motia/III (según tu pipeline CI/CD).
 - Los steps se descubren desde `src/*_step.py`; no es necesario registrar manualmente el orquestador.
-- Configura colas y reintentos en el `config.yaml` de III si aplica.
+- Configura colas y reintentos en el `iii-config.yaml` de III si aplica.
 
 ## Licencia
 
