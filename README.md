@@ -16,7 +16,8 @@
 
 Event-driven pipeline with **Motia** that ingests raw data, validates against **Pydantic** contracts, auto-repairs with an AI agent (and rule cache), and loads to destination. Unrecoverable events go to a **Dead Letter Queue** for human inspection.
 
-## Architecture
+
+## Flows
 
 <img width="1692" height="985" alt="image" src="https://github.com/user-attachments/assets/0cd10016-6318-45c5-b522-6d54aee5bbb4" />
 
