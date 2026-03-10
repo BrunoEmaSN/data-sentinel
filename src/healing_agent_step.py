@@ -13,7 +13,7 @@ from motia import FlowContext, queue
 from pydantic import ValidationError
 
 from contracts.v1.repair_rule import RepairRule
-from contracts.v1.transaction import TransactionSchema
+from contracts.v1.schema_factory import get_transaction_model
 from repair_state import (
     apply_rule_idempotent,
     build_stored_rule,
@@ -22,8 +22,9 @@ from repair_state import (
     set_repair_rule,
 )
 
-# Esquema objetivo (mismo que el Validador)
-TARGET_SCHEMA_MODEL = TransactionSchema
+# Esquema objetivo: se resuelve por versión (factory) para soportar v2 en el futuro
+def _target_schema_model(payload: dict) -> type:
+    return get_transaction_model(payload.get("version", "1.0.0"))
 # TTL en días para reglas nuevas (configurable por env)
 REPAIR_RULE_TTL_DAYS_ENV = "REPAIR_RULE_TTL_DAYS"
 DEFAULT_TTL_DAYS = 7
@@ -102,7 +103,7 @@ async def _call_llm_for_fix(payload: dict, error_details: list[dict], ctx: FlowC
         ctx.logger.warning("OPENAI_API_KEY not set; skipping LLM remediation")
         return None
 
-    target_schema = TARGET_SCHEMA_MODEL.model_json_schema()
+    target_schema = _target_schema_model(payload).model_json_schema()
     prompt = MASTER_PROMPT.format(
         raw_payload=json.dumps(payload, default=str),
         error_details=json.dumps(error_details, default=str),
@@ -172,8 +173,10 @@ async def handler(data: dict, ctx: FlowContext) -> None:
                 ctx.logger.info("Persisted repair rule with TTL", {"rule_key": sig, "ttl_days": ttl})
 
     if corrected is not None:
+        # Re-validar siempre: la IA puede omitir una regla del contrato. No emitir sin validar.
+        schema_cls = _target_schema_model(payload)
         try:
-            validated = TransactionSchema.model_validate(corrected)
+            validated = schema_cls.model_validate(corrected)
             out = validated.model_dump(mode="json")
             out["request_id"] = request_id
             out["received_at"] = raw_envelope.get("received_at")
@@ -181,8 +184,12 @@ async def handler(data: dict, ctx: FlowContext) -> None:
             await ctx.enqueue({"topic": "schema_fixed", "data": out})
             ctx.logger.info("Data recovered and emitted as schema_fixed", {"request_id": request_id})
             return
-        except ValidationError:
-            pass
+        except ValidationError as reval_err:
+            ctx.logger.warning(
+                "Repaired payload failed re-validation; sending to DLQ",
+                {"request_id": request_id, "errors": reval_err.errors()},
+            )
+            # No emitir schema_fixed: el JSON reparado no cumple el contrato
 
     # Irreparable: enviar a DLQ
     dlq_payload = {

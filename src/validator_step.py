@@ -5,7 +5,7 @@ Emite validated_data, schema_fixed (reparación por cache) o validation_error.
 """
 from motia import FlowContext, queue
 
-from contracts.v1.transaction import TransactionSchema
+from contracts.v1.schema_factory import get_transaction_model
 from pydantic import ValidationError
 
 from repair_state import apply_rule_idempotent, error_signature, get_repair_rule
@@ -28,8 +28,10 @@ async def handler(data: dict, ctx: FlowContext) -> None:
     raw = data.get("raw", {})
     ctx.logger.info("Validating payload", {"request_id": request_id})
 
+    schema_cls = get_transaction_model(raw.get("version", "1.0.0"))
+
     try:
-        validated = TransactionSchema.model_validate(raw)
+        validated = schema_cls.model_validate(raw)
         payload_out = validated.model_dump(mode="json")
         payload_out["request_id"] = request_id
         payload_out["received_at"] = data.get("received_at")
@@ -46,7 +48,7 @@ async def handler(data: dict, ctx: FlowContext) -> None:
     if rule:
         fixed = apply_rule_idempotent(raw, rule)
         try:
-            validated = TransactionSchema.model_validate(fixed)
+            validated = schema_cls.model_validate(fixed)
             out = validated.model_dump(mode="json")
             out["request_id"] = request_id
             out["received_at"] = data.get("received_at")

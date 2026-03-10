@@ -43,7 +43,8 @@ pip install -e ".[dev]"
 │   ├── event.py           # BaseEvent, EventEnvelope (sobre con version)
 │   ├── transaction.py     # TransactionSchema
 │   ├── order.py           # OrderItem, OrderPayload, OrderEvent (Envelope+Payload)
-│   └── repair_rule.py      # RepairRule, StoredRepairRule (reglas con TTL)
+│   ├── repair_rule.py     # RepairRule, StoredRepairRule (reglas con TTL)
+│   └── schema_factory.py  # Factory por versión (OrderEvent v1/v2, Transaction)
 ├── src/                   # Steps Motia (auto-descubiertos)
 │   ├── repair_state.py    # CacheProvider: get/set reglas, apply idempotente, TTL
 │   ├── ingestor_step.py   # POST /ingest → raw_event
@@ -177,6 +178,12 @@ El prompt recibe: `raw_payload`, `error_details` (de Pydantic) y `target_schema`
 
 - **Workbench III**: Grafo de eventos y logs de cada step.
 - **Feedback loop**: Revisar periódicamente la DLQ y los logs del Agente para ajustar contratos en `contracts/v1` y reglas de reparación.
+
+## Mejoras para producción / portafolio (sugerencias senior)
+
+- **Idempotencia del pipeline**: El Loader es idempotente: usa el `event_id` del Envelope para comprobar en State si el evento ya fue procesado. En reintentos por fallo de red no se duplican registros en el DWH. Clave en State: `loader_processed` por `event_id` (o `request_id` si no hay `event_id`).
+- **Validación del JSON reparado**: En el Healing Agent, el JSON devuelto por la IA se re-valida siempre con el esquema objetivo (`model_validate`) antes de emitir `schema_fixed`. Si la re-validación falla, se registra en log y el evento va a DLQ; no se emite dato inválido.
+- **Evolución del contrato (Schema Factory)**: El campo `version` del Envelope permite soportar varias versiones del contrato. En `contracts/v1/schema_factory.py`: `get_order_event_model(version)` y `get_transaction_model(version)` devuelven la clase correcta (p. ej. `OrderEvent` para `"1.0.0"`; al añadir `OrderEventV2` para `"2.0.0"`, se registra en `ORDER_EVENT_REGISTRY` y el Validador/Healing Agent pueden instanciar la clase adecuada sin cambiar la lógica del pipeline).
 
 ## Recomendaciones para ingeniería
 
