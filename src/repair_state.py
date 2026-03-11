@@ -11,12 +11,12 @@ from typing import Any
 
 from contracts.v1.repair_rule import RepairRule, StoredRepairRule
 
-# Keys for State (Motia Stream)
-REPAIR_RULES_GROUP = "sentinel"
-REPAIR_RULES_STREAM = "repair_rules"
+from settings import settings
 
-# Default TTL (days); third-party APIs may change
-DEFAULT_TTL_DAYS = 7
+# Keys for State (Motia Stream) — from configuration
+REPAIR_RULES_GROUP = settings.state.repair_rules_group
+REPAIR_RULES_STREAM = settings.state.repair_rules_stream
+DEFAULT_TTL_DAYS = settings.state.repair_rule_ttl_days
 
 
 def error_signature(error_details: list[dict]) -> str:

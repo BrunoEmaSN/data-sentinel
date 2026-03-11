@@ -1,5 +1,5 @@
 """
-Tests para repair_state: apply_rule_idempotent, is_rule_expired, error_signature.
+Tests for repair_state: apply_rule_idempotent, is_rule_expired, error_signature.
 """
 from datetime import datetime, timezone, timedelta
 
@@ -36,9 +36,9 @@ class TestApplyRuleIdempotent:
         payload = {"price": "10", "amount": 20}
         rule = {"field_mapping": {"price": "amount"}}
         out = apply_rule_idempotent(payload, rule)
-        # No sobrescribir amount existente
+        # Do not overwrite existing amount
         assert out.get("amount") == 20
-        assert "price" in out  # no se aplica el rename para no pisar
+        assert "price" in out  # rename not applied so we don't overwrite
 
     def test_rules_format_rename(self):
         payload = {"user_email": "a@b.com"}

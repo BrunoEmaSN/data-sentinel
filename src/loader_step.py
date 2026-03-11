@@ -6,9 +6,11 @@ On retries due to network failure, records are not duplicated in the DWH.
 """
 from motia import FlowContext, queue
 
-# State for idempotency: keys by event_id (or request_id if no event_id)
-LOADER_PROCESSED_GROUP = "loader"
-LOADER_PROCESSED_STREAM = "loader_processed"
+from settings import settings
+
+# State for idempotency — from configuration
+LOADER_PROCESSED_GROUP = settings.state.loader_processed_group
+LOADER_PROCESSED_STREAM = settings.state.loader_processed_stream
 
 config = {
     "name": "DataLoader",

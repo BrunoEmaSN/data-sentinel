@@ -5,7 +5,6 @@ On learn: persists RepairRule with TTL so the AI re-evaluates after expiry.
 Separation: orchestrator delegates to repair_state (cache) or _call_llm_for_fix (AIProvider).
 """
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -14,8 +13,9 @@ from typing import Any
 # Ensure src/ is on sys.path so sibling modules (config, repair_state) are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Load .env before reading os.environ (sensitive data in .env)
+# Load .env and config (sensitive data in .env; behaviour in sentinel-config.yaml)
 import config  # noqa: F401
+from settings import settings
 
 from motia import FlowContext, queue
 from pydantic import ValidationError
@@ -33,9 +33,6 @@ from repair_state import (
 # Target schema: resolved by version (factory) to support v2 in the future
 def _target_schema_model(payload: dict) -> type:
     return get_transaction_model(payload.get("version", "1.0.0"))
-# TTL in days for new rules (configurable via env)
-REPAIR_RULE_TTL_DAYS_ENV = "REPAIR_RULE_TTL_DAYS"
-DEFAULT_TTL_DAYS = 7
 
 # --- MASTER PROMPT: strict, schema-oriented, no hallucination ---
 MASTER_PROMPT = """Role: You are an expert Data Reliability Engineer specialized in automated Schema Drift Repair.
@@ -69,11 +66,8 @@ config = {
 
 
 def _ttl_days() -> int:
-    """TTL in days for new rules (env REPAIR_RULE_TTL_DAYS)."""
-    try:
-        return int(os.environ.get(REPAIR_RULE_TTL_DAYS_ENV, DEFAULT_TTL_DAYS))
-    except ValueError:
-        return DEFAULT_TTL_DAYS
+    """TTL in days for new rules (from settings; override via REPAIR_RULE_TTL_DAYS)."""
+    return settings.state.repair_rule_ttl_days
 
 
 def _extract_json_from_response(content: str) -> dict | None:
@@ -106,7 +100,7 @@ async def _call_llm_for_fix(payload: dict, error_details: list[dict], ctx: FlowC
     Calls LLM with master prompt (strict schema, zero hallucination).
     Returns corrected JSON or None if unrecoverable or no API key.
     """
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = settings.openai_api_key
     if not api_key:
         ctx.logger.warning("OPENAI_API_KEY not set; skipping LLM remediation")
         return None
@@ -121,13 +115,14 @@ async def _call_llm_for_fix(payload: dict, error_details: list[dict], ctx: FlowC
     try:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=api_key)
+        ha = settings.healing_agent
         response = await client.chat.completions.create(
-            model=os.environ.get("OPENAI_REMEDIATION_MODEL", "gpt-4o-mini"),
+            model=ha.openai_remediation_model,
             messages=[
                 {"role": "system", "content": "You output only valid JSON. No markdown, no explanation."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.1,
+            temperature=ha.temperature,
         )
         content = (response.choices[0].message.content or "").strip()
         return _extract_json_from_response(content)
@@ -159,12 +154,12 @@ async def handler(data: dict, ctx: FlowContext) -> None:
     else:
         corrected = await _call_llm_for_fix(payload, error_details, ctx)
         if corrected:
-            # Learning loop: extraer mapeo y persistir como RepairRule con TTL
+            # Learning loop: extract mapping and persist as RepairRule with TTL
             rules_list: list[RepairRule] = []
             for err in error_details:
                 loc = err.get("loc", [])
                 if loc and isinstance(loc[0], str) and loc[0] in payload and loc[0] not in corrected:
-                    for correct_key in ["amount", "email", "user_id", "currency", "description", "source"]:
+                    for correct_key in settings.healing_agent.target_fields:
                         if correct_key in corrected and correct_key not in payload:
                             rules_list.append(
                                 RepairRule(

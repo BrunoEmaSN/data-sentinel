@@ -1,1 +1,1 @@
-# Contracts package - Schema Registry para el Sentinel de Datos
+# Contracts package - Schema Registry for the Data Sentinel

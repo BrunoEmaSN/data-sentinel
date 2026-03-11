@@ -10,7 +10,7 @@ __pycache__/
 *$py.class
 *.so
 
-# Distribución / build
+# Distribution / build
 build/
 dist/
 *.egg-info/
@@ -30,12 +30,12 @@ htmlcov/
 *.swo
 *~
 
-# Variables de entorno (secretos)
+# Environment variables (secrets)
 .env
 .env.local
 .env.*.local
 
-# Datos locales del motor III (streams, KV, state, queue)
+# III engine local data (streams, KV, state, queue)
 data/
 
 # Logs y temporales

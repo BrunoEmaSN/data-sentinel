@@ -1,6 +1,11 @@
 # III engine configuration (Motia runtime) for data-sentinel.
 # Without this file, III uses "default modules" and does not load your Python steps.
 # Run from project root: iii -c iii-config.yaml
+#
+# Optional environment variables:
+#   SENTINEL_API_PORT    — REST API port (default 3111)
+#   STREAM_PORT          — Stream port (default 3112)
+#   SENTINEL_DATA_DIR    — base directory for stores (default ./data)
 
 modules:
   - class: modules::stream::StreamModule
@@ -11,12 +16,12 @@ modules:
         class: modules::stream::adapters::KvStore
         config:
           store_method: file_based
-          file_path: ./data/stream_store
+          file_path: ${SENTINEL_DATA_DIR:./data}/stream_store
 
   - class: modules::kv_server::KvServer
     config:
       store_method: file_based
-      file_path: ./data/kv_store
+      file_path: ${SENTINEL_DATA_DIR:./data}/kv_store
       save_interval_ms: 5000
 
   - class: modules::state::StateModule
@@ -25,11 +30,11 @@ modules:
         class: modules::state::adapters::KvStore
         config:
           store_method: file_based
-          file_path: ./data/state_store.db
+          file_path: ${SENTINEL_DATA_DIR:./data}/state_store.db
 
   - class: modules::api::RestApiModule
     config:
-      port: 3111
+      port: ${SENTINEL_API_PORT:3111}
       host: 0.0.0.0
       default_timeout: 30000
       concurrency_request_limit: 1024
@@ -51,7 +56,7 @@ modules:
         class: modules::queue::BuiltinQueueAdapter
         config:
           store_method: file_based
-          file_path: ./data/queue_store
+          file_path: ${SENTINEL_DATA_DIR:./data}/queue_store
 
   - class: modules::pubsub::PubSubModule
     config:

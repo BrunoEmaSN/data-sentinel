@@ -1,5 +1,5 @@
 """
-Tests para RepairRule y StoredRepairRule (Cache-Aside).
+Tests for RepairRule and StoredRepairRule (Cache-Aside).
 """
 from datetime import datetime, timedelta
 

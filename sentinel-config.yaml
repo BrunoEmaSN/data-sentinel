@@ -1,0 +1,24 @@
+# Data Sentinel configuration (configurable tool).
+# Secrets (OPENAI_API_KEY, etc.) go in .env; here only behaviour options.
+# Alternative path: SENTINEL_CONFIG_PATH environment variable.
+
+# State / Stream (Motia): names for repair rules and loader idempotency
+state:
+  repair_rules_group: sentinel
+  repair_rules_stream: repair_rules
+  repair_rule_ttl_days: 7
+  loader_processed_group: loader
+  loader_processed_stream: loader_processed
+
+# Healing Agent (LLM remediation)
+healing_agent:
+  openai_remediation_model: gpt-4o-mini
+  temperature: 0.1
+  # Schema fields used to infer rename rules (source_field -> target_field)
+  target_fields:
+    - amount
+    - email
+    - user_id
+    - currency
+    - description
+    - source

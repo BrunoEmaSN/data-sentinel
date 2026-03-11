@@ -71,15 +71,18 @@ pip install -e ".[dev]"
 # or: pip install motia pydantic openai pytest pytest-asyncio httpx python-dotenv
 ```
 
-### 3. Environment variables (sensitive data in .env)
+### 3. Configuration (configurable tool)
 
-Sensitive keys and configuration go in a `.env` file at the project root (not committed to the repo).
+- **Secrets**: In a `.env` file at the project root (do not commit). Copy: `cp .env.example .env` and fill in `OPENAI_API_KEY`, etc. Loaded with `python-dotenv` on startup.
+- **Behaviour**: **`sentinel-config.yaml`** at the root (or path in `SENTINEL_CONFIG_PATH`). It defines: state/stream names, repair rule TTL, Healing Agent model and temperature, schema fields for inferring rules. See [sentinel-config.yaml](sentinel-config.yaml) and `.env.example`.
+
+### 4. Environment variables (.env)
 
 1. Copy the template: `cp .env.example .env`
 2. Edit `.env` and fill in the values (e.g. `OPENAI_API_KEY=sk-...`).
-3. The Healing Agent (and the rest of the pipeline) load `.env` automatically on startup (`python-dotenv` + `src/config.py`).
+3. Optional overrides: `OPENAI_REMEDIATION_MODEL`, `REPAIR_RULE_TTL_DAYS` override values from `sentinel-config.yaml`. `SENTINEL_CONFIG_PATH` points to a different config file.
 
-See `.env.example` for the list of variables. The `.env` file is in `.gitignore`.
+The `.env` file is in `.gitignore`.
 
 ## Project structure
 
@@ -90,9 +93,11 @@ See `.env.example` for the list of variables. The `.env` file is in `.gitignore`
 │   ├── order.py           # OrderItem, OrderPayload, OrderEvent (Envelope+Payload)
 │   ├── repair_rule.py     # RepairRule, StoredRepairRule (rules with TTL)
 │   └── schema_factory.py  # Factory by version (OrderEvent v1/v2, Transaction)
+├── sentinel-config.yaml   # Pipeline configuration (state, healing_agent, etc.)
 ├── .env.example            # Variable template (copy to .env; do not commit .env)
 ├── src/                    # Motia steps (auto-discovered)
 │   ├── config.py           # Loads .env (sensitive data)
+│   ├── settings.py         # Loads sentinel-config.yaml, validates, exposes settings
 │   ├── repair_state.py     # CacheProvider: get/set rules, idempotent apply, TTL
 │   ├── ingestor_step.py    # POST /ingest → raw_event
 │   ├── validator_step.py  # raw_event → validated_data | schema_fixed (cache) | validation_error
@@ -119,7 +124,8 @@ From the project root, start the III engine with the repo config. This brings up
 iii -c iii-config.yaml
 ```
 
-- The ingest endpoint is at **`POST http://localhost:3111/ingest`** (port defined in `iii-config.yaml`).
+- The ingest endpoint is at **`POST http://localhost:3111/ingest`** (port configurable via `SENTINEL_API_PORT` in `iii-config.yaml`; default 3111).
+- Optional env vars for III: `SENTINEL_API_PORT`, `STREAM_PORT`, `SENTINEL_DATA_DIR` (see comments in `iii-config.yaml`).
 - Steps are auto-discovered from `src/`; the `ExecModule` runs `uv run motia run --dir src`. If you don't use uv, edit `iii-config.yaml` and change to `python -m motia run --dir src`.
 
 ### Start the Motia Workbench
@@ -218,10 +224,8 @@ Scenarios include **OrderEvent contract breach** (`test_sentinel_order_event_con
 
 ## AI Agent configuration
 
-Put these variables in your `.env` (not in code):
-
-- `OPENAI_API_KEY`: required for the Healing Agent to call the LLM when there is no rule in cache.
-- `OPENAI_REMEDIATION_MODEL`: model to use (default `gpt-4o-mini`).
+- **Secrets** in `.env`: `OPENAI_API_KEY` (required for the Healing Agent to call the LLM when there is no rule in cache).
+- **Behaviour** in `sentinel-config.yaml` (section `healing_agent`): `openai_remediation_model`, `temperature`, `target_fields` (schema fields used to infer repair rules). You can override model and TTL with `OPENAI_REMEDIATION_MODEL` and `REPAIR_RULE_TTL_DAYS` in `.env`.
 
 ### Master prompt (zero hallucination)
 
