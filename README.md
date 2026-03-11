@@ -273,4 +273,4 @@ The prompt receives: `raw_payload`, `error_details` (from Pydantic), and `target
 
 ## License
 
-Apache-2.0 (or whatever you define for the repo).
+Apache-2.0
